@@ -119,10 +119,11 @@ def create_app():
 
     # Configure CORS
     CORS(app, 
-         origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"],
-         supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization"],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+        #  origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"],
+        origins=["https://skillsync-ruby.vercel.app"],
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
     
     # Create necessary directories
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
