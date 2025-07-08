@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: flask-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./ml_models:/app/ml_models
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: sqlite:///skill_analysis.db
+      SECRET_KEY: your_super_secret_key
+    depends_on:
+      # Add a database service below if needed
+      # - db
+    restart: unless-stopped
+
+# Optional PostgreSQL service if you plan to upgrade from SQLite
+# Uncomment below to enable PostgreSQL
+
+#  db:
+#    image: postgres:13
+#    container_name: postgres-db
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_USER: youruser
+#      POSTGRES_PASSWORD: yourpassword
+#      POSTGRES_DB: skill_analysis
+#    ports:
+#      - "5432:5432"
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+
+# volumes:
+#   postgres_data:
