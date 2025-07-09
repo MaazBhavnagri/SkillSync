@@ -33,7 +33,8 @@ const Results = () => {
         setLoading(true);
         setError(null);
         console.log('This is ='+uploadId);
-        const endpoint = uploadId?`http://localhost:5000/api/results/${uploadId}`:`http://localhost:5000/api/results/latest`;
+        // const endpoint = uploadId?`http://localhost:5000/api/results/${uploadId}`:`http://localhost:5000/api/results/latest`;
+        const endpoint = uploadId?`https://skillsync-mg9n.onrender.com/api/results/${uploadId}`:`https://skillsync-mg9n.onrender.com/api/results/latest`;
 
           const res = await fetch(endpoint, {
             method: "GET",

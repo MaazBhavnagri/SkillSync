@@ -50,7 +50,7 @@ const AuthPage = () => {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated Background */}
       <div className="absolute inset-0">
-        {[...Array(50)].map((_, i) => (
+        {[...Array(20)].map((_, i) => (
           <motion.div
             key={i}
             className="absolute w-3 h-3 bg-purple-900 rounded-full"
@@ -58,7 +58,7 @@ const AuthPage = () => {
               x: [0, Math.random() * 100 - 50],
               y: [0, Math.random() * 100 - 50],
               scale: [1, Math.random() + 0.5, 1],
-              opacity: [0.2, 0.8, 0.2],
+              opacity: [0.1, 0.5, 0.1],
             }}
             transition={{
               duration: Math.random() * 3 + 2,

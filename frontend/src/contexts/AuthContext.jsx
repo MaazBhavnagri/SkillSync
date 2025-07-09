@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (email, password) => {
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch("https://skillsync-mg9n.onrender.com/api/login", {
         method: "POST",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }) => {
   // Signup function
   const signup = async (email, password, name) => {
     try {
-      const res = await fetch("http://localhost:5000/api/signup", {
+      const res = await fetch("https://skillsync-mg9n.onrender.com/api/signup", {
         method: "POST",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -94,7 +94,7 @@ export const AuthProvider = ({ children }) => {
   // Verify session
   const verifySession = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/verify-session", {
+      const res = await fetch("https://skillsync-mg9n.onrender.com/api/verify-session", {
         credentials: 'include',
       });
 
@@ -113,7 +113,7 @@ export const AuthProvider = ({ children }) => {
   // Logout
   const logout = async () => {
     try {
-      await fetch("http://localhost:5000/api/logout", {
+      await fetch("https://skillsync-mg9n.onrender.com/api/logout", {
         method: "POST",
         credentials: 'include',
       });

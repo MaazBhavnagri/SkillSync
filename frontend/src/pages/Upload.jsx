@@ -107,7 +107,7 @@ const Upload = () => {
         exercise_type: selectedExercise
       });
 
-      const res = await fetch("http://localhost:5000/api/upload", {
+      const res = await fetch("https://skillsync-mg9n.onrender.com/api/upload", {
         method: "POST",
         credentials: 'include',
         body: formData,
