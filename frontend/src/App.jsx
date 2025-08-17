@@ -15,6 +15,7 @@ import Settings from "./pages/Settings"
 import LoadingScreen from "./components/LoadingScreen"
 import "./App.css"
 
+
 function AppContent() {
   const { isAuthenticated, loading } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
@@ -25,6 +26,9 @@ function AppContent() {
     }, 2000)
     return () => clearTimeout(timer)
   }, [])
+  useEffect(() => {
+  console.log('isLoading:', isLoading, 'loading:', loading)
+}, [isLoading, loading])
 
   if (isLoading || loading) {
     return <LoadingScreen />

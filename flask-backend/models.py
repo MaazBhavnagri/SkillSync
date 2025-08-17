@@ -15,6 +15,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     dark_mode = db.Column(db.Boolean, default=False)
     avatar_url = db.Column(db.String(255), default='')
+    xp = db.Column(db.Integer, default=0)  # Experience points
+    level = db.Column(db.Integer, default=1)  # User level
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
     
@@ -31,6 +33,15 @@ class User(UserMixin, db.Model):
     def get_id(self):
         return str(self.id)
     
+    def add_xp(self, amount):
+        """Add XP and update level if needed"""
+        self.xp += amount
+        # Calculate new level (every 200 XP = 1 level)
+        new_level = (self.xp // 200) + 1
+        if new_level > self.level:
+            self.level = new_level
+        return self.level
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -38,6 +49,8 @@ class User(UserMixin, db.Model):
             'email': self.email,
             'dark_mode': self.dark_mode,
             'avatar_url': self.avatar_url,
+            'xp': self.xp,
+            'level': self.level,
             'created_at': self.created_at.isoformat(),
             'is_active': self.is_active
         }

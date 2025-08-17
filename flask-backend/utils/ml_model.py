@@ -17,7 +17,7 @@ def load_and_preprocess(filepath):
 
     df = pd.read_csv(filepath)
 
-    required_cols = ['form', 'exc_type', 'frame'] + [
+    required_cols = ['form', 'exc_type'] + [
         'right_elbow_angle', 'left_elbow_angle',
         'right_shoulder_angle', 'left_shoulder_angle',
         'right_hip_angle', 'left_hip_angle',
@@ -29,7 +29,7 @@ def load_and_preprocess(filepath):
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
 
-    df = df.sort_values(['exc_type', 'frame'])
+    df = df.sort_values(['exc_type'])
     le = LabelEncoder()
     df['form'] = le.fit_transform(df['form'])
 
@@ -64,7 +64,7 @@ def create_ts_features(df):
 def main():
     try:
         print("Loading data...")
-        data_path = os.path.join('dataset', 'full_exercise_dataset.csv')
+        data_path = os.path.join('dataset', 'cleaned_and_resampled_exercise_data.csv')
         df, label_encoder = load_and_preprocess(data_path)
 
         print("Creating time series features...")
@@ -91,8 +91,8 @@ def main():
         print("\nClassification Report:\n", classification_report(y_test, y_pred))
 
         os.makedirs('model', exist_ok=True)
-        joblib.dump(clf, 'model/exercise_rf_model.pkl')
-        joblib.dump(label_encoder, 'model/label_encoder.pkl')
+        joblib.dump(clf, 'model/updated_exercise_rf_model.pkl')
+        joblib.dump(label_encoder, 'model/updated_label_encoder.pkl')
         print("Model saved successfully!")
 
     except Exception as e:

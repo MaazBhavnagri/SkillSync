@@ -22,6 +22,14 @@ export const AuthProvider = ({ children }) => {
     description: "",
   });
 
+  const API_BASE = (import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api").replace(/\/$/, "");
+
+  const fetchWithTimeout = (url, options = {}, timeoutMs = 7000) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+  };
+
   // Verify session on initial load
   useEffect(() => {
     verifySession().finally(() => setLoading(false));
@@ -30,7 +38,7 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (email, password) => {
     try {
-      const res = await fetch("https://skillsync-mg9n.onrender.com/api/login", {
+      const res = await fetchWithTimeout(`${API_BASE}/login`, {
         method: "POST",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -62,7 +70,7 @@ export const AuthProvider = ({ children }) => {
   // Signup function
   const signup = async (email, password, name) => {
     try {
-      const res = await fetch("https://skillsync-mg9n.onrender.com/api/signup", {
+      const res = await fetchWithTimeout(`${API_BASE}/signup`, {
         method: "POST",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -94,29 +102,27 @@ export const AuthProvider = ({ children }) => {
   // Verify session
   const verifySession = async () => {
     try {
-      const res = await fetch("https://skillsync-mg9n.onrender.com/api/verify-session", {
-        credentials: 'include',
-      });
+      const res = await fetchWithTimeout(`${API_BASE}/verify-session`, { credentials: 'include' }, 5000);
 
       const data = await res.json();
       if (res.ok) {
         setUser(data.user);
       } else {
-        logout();
+        setUser(null);
       }
     } catch (err) {
       console.error("Session verification error:", err);
-      logout();
+      setUser(null);
     }
   };
 
   // Logout
   const logout = async () => {
     try {
-      await fetch("https://skillsync-mg9n.onrender.com/api/logout", {
+      await fetchWithTimeout(`${API_BASE}/logout`, {
         method: "POST",
         credentials: 'include',
-      });
+      }, 4000);
     } catch (err) {
       console.error("Logout error:", err);
     } finally {

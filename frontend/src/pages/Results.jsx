@@ -1,7 +1,17 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { Canvas } from "@react-three/fiber";
 import { motion, AnimatePresence } from "framer-motion";
+import React from "react";
+import {
+  Page,
+  Document,
+  Text,
+  View,
+  StyleSheet,
+  pdf,
+} from "@react-pdf/renderer";
 import {
   Play,
   Pause,
@@ -16,6 +26,15 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+
+// Define styles
+const styles = StyleSheet.create({
+  page: { padding: 30, fontFamily: "Helvetica" },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
+  section: { marginBottom: 10 },
+  subtitle: { fontSize: 16, fontWeight: "bold", marginBottom: 5 },
+  text: { fontSize: 12, marginBottom: 3 },
+});
 
 const Results = () => {
   const { uploadId } = useParams(); // this gets the /:uploadId from the URL
@@ -32,14 +51,19 @@ const Results = () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('This is ='+uploadId);
-        // const endpoint = uploadId?`http://localhost:5000/api/results/${uploadId}`:`http://localhost:5000/api/results/latest`;
-        const endpoint = uploadId?`https://skillsync-mg9n.onrender.com/api/results/${uploadId}`:`https://skillsync-mg9n.onrender.com/api/results/latest`;
+        console.log("This is =" + uploadId);
+        const API_BASE = (
+          import.meta?.env?.VITE_API_BASE_URL ||
+          "http://localhost:5000/api"
+        ).replace(/\/$/, "");
+        const endpoint = uploadId
+          ? `${API_BASE}/results/${uploadId}`
+          : `${API_BASE}/results/latest`;
 
-          const res = await fetch(endpoint, {
-            method: "GET",
-            credentials: "include",
-          });
+        const res = await fetch(endpoint, {
+          method: "GET",
+          credentials: "include",
+        });
 
         console.log("Fetch response status:", res.status);
 
@@ -75,6 +99,66 @@ const Results = () => {
 
     fetchResults();
   }, []);
+
+  const PdfReport = ({ data }) => (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <View style={styles.section}>
+          <Text style={styles.title}>Video Analysis Report</Text>
+          <Text style={styles.text}>Uploaded on: {data.uploadDate}</Text>
+          <Text style={styles.text}>Title: {data.title}</Text>
+          <Text style={styles.text}>Duration: {data.duration}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Overall Score</Text>
+          <Text style={styles.text}>{data.overallScore}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Performance Breakdown</Text>
+          {Object.entries(data.breakdown).map(([key, value]) => (
+            <Text key={key} style={styles.text}>
+              {key}: {value}%
+            </Text>
+          ))}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Feedback</Text>
+          <Text style={styles.text}>{data.feedback}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Suggestions</Text>
+          {data.suggestions.map((suggestion) => (
+            <Text key={suggestion.id} style={styles.text}>
+              • {suggestion.title}: {suggestion.description}
+            </Text>
+          ))}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Key Moments</Text>
+          {data.keyMoments.map((moment, index) => (
+            <Text key={index} style={styles.text}>
+              - {moment.time}s: {moment.label}
+            </Text>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  );
+
+  const generatePdf = async () => {
+    const blob = await pdf(<PdfReport data={analysisData} />).toBlob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "video-analysis-report.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (loading)
     return (
@@ -212,16 +296,31 @@ const Results = () => {
             </div>
 
             {/* Video Container */}
+            {console.log(analysisData.videoUrl)}
             <div className="relative bg-gray-900 rounded-xl overflow-hidden mb-4">
-              <img
-                // src={`http://localhost:5000/${analysisData.videoUrl}`|| "/placeholder.svg"}
-                src={`${analysisData.videoUrl}`|| "/placeholder.svg"}
-                alt="Analysis video"
-                className="w-full h-64 object-cover"
-              />
+              <div className="grid grid-cols-2 gap-4">
+                {/* User video */}
+                <div className="video-container">
+                  <video controls muted autoPlay>
+                    <source
+                      src={`http://localhost:5000/${analysisData.videoUrl}`}
+                      type="video/mp4"
+                    />
+                  </video>
+                </div>
+                {/* Reference video */}
+                <div className="reference-container">
+                  <video 
+                    src={`/${analysisData.exercise_type || 'pushup'}.mp4`} 
+                    controls 
+                    autoPlay 
+                    muted 
+                  />
+                </div>
+              </div>
 
               {/* Play Button Overlay */}
-              <motion.button
+              {/* <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsPlaying(!isPlaying)}
@@ -234,10 +333,10 @@ const Results = () => {
                     <Play className="w-8 h-8 text-gray-900 ml-1" />
                   )}
                 </div>
-              </motion.button>
+              </motion.button> */}
 
               {/* Key Moments Overlay */}
-              <div className="absolute bottom-4 left-4 right-4">
+              {/* <div className="absolute bottom-4 left-4 right-4">
                 <div className="flex space-x-2">
                   {analysisData.keyMoments.map((moment, index) => (
                     <motion.button
@@ -252,7 +351,7 @@ const Results = () => {
                     </motion.button>
                   ))}
                 </div>
-              </div>
+              </div> */}
             </div>
 
             {/* Video Controls */}
@@ -394,64 +493,87 @@ const Results = () => {
           </div>
         </div>
 
-        <div className="space-y-4">
-          {analysisData.suggestions.map((suggestion, index) => (
+        <div className="space-y-6">
+          {/* Feedback Section */}
+          {analysisData.feedback && (
             <motion.div
-              key={suggestion.id}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 + index * 0.1 }}
-              className={`rounded-xl border p-4 transition-all duration-200 ${getSuggestionColor(
-                suggestion.priority
-              )}`}
+              transition={{ duration: 0.4 }}
+              className="rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 p-5 shadow-sm"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-3 flex-1">
-                  {getSuggestionIcon(suggestion.type)}
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                      {suggestion.title}
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      {suggestion.description}
-                    </p>
-
-                    <AnimatePresence>
-                      {expandedSuggestion === suggestion.id && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="text-sm text-gray-700 dark:text-gray-300 mt-2 pt-2 border-t border-gray-200 dark:border-gray-600"
-                        >
-                          {suggestion.expanded}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() =>
-                    setExpandedSuggestion(
-                      expandedSuggestion === suggestion.id
-                        ? null
-                        : suggestion.id
-                    )
-                  }
-                  className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200"
-                >
-                  {expandedSuggestion === suggestion.id ? (
-                    <ChevronUp className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                  )}
-                </motion.button>
-              </div>
+              <h2 className="text-lg font-bold text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                💡 Overall Feedback
+              </h2>
+              <p className="mt-2 text-gray-700 dark:text-gray-300 leading-relaxed">
+                {analysisData.feedback}
+              </p>
             </motion.div>
-          ))}
+          )}
+
+          {/* Suggestions Section */}
+          <div className="space-y-4">
+            {analysisData.suggestions.map((suggestion, index) => (
+              <motion.div
+                key={suggestion.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 + index * 0.1 }}
+                className={`rounded-2xl border p-5 shadow-sm transition-all duration-200 hover:shadow-md ${getSuggestionColor(
+                  suggestion.priority
+                )}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-4 flex-1">
+                    <div className="flex-shrink-0 mt-1">
+                      {getSuggestionIcon(suggestion.type)}
+                    </div>
+
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1 text-base">
+                        {suggestion.title}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 leading-relaxed">
+                        {suggestion.description}
+                      </p>
+
+                      <AnimatePresence>
+                        {expandedSuggestion === suggestion.id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="text-sm text-gray-700 dark:text-gray-300 mt-2 pt-3 border-t border-gray-200 dark:border-gray-600 leading-relaxed"
+                          >
+                            {suggestion.expanded}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() =>
+                      setExpandedSuggestion(
+                        expandedSuggestion === suggestion.id
+                          ? null
+                          : suggestion.id
+                      )
+                    }
+                    className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200"
+                  >
+                    {expandedSuggestion === suggestion.id ? (
+                      <ChevronUp className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -476,6 +598,7 @@ const Results = () => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             className="flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white py-3 px-6 rounded-xl font-semibold border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+            onClick={generatePdf}
           >
             <div className="flex items-center justify-center space-x-2">
               <Download className="w-5 h-5" />

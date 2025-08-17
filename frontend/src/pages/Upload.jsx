@@ -43,6 +43,7 @@ const Upload = () => {
   const [uploadComplete, setUploadComplete] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState(exerciseTypes[0]); // Default to first exercise
   const fileInputRef = useRef(null);
+  const apiBaseUrl = (import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api").replace(/\/$/, "");
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -107,9 +108,9 @@ const Upload = () => {
         exercise_type: selectedExercise
       });
 
-      const res = await fetch("https://skillsync-mg9n.onrender.com/api/upload", {
+      const res = await fetch(`${apiBaseUrl}/upload`, {
         method: "POST",
-        credentials: 'include',
+        credentials: "include",
         body: formData,
       });
 

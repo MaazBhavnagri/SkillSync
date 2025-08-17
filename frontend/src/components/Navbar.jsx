@@ -3,12 +3,15 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap } from "lucide-react"
+import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap, User, LogOut } from "lucide-react"
+import { useAuth } from "../contexts/AuthContext"
 
 const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
 
   const navItems = [
     { path: "/", icon: Home, label: "Dashboard" },
@@ -21,6 +24,12 @@ const Navbar = () => {
   const handleNavigation = (path) => {
     navigate(path)
     setIsMobileMenuOpen(false)
+    setIsUserMenuOpen(false)
+  }
+
+  const handleLogout = () => {
+    logout()
+    setIsUserMenuOpen(false)
   }
 
   return (
@@ -93,6 +102,59 @@ const Navbar = () => {
                   </motion.button>
                 )
               })}
+            </div>
+
+            {/* User Avatar */}
+            <div className="hidden md:block relative">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200"
+              >
+                <img
+                  src={user?.avatar_url ? `http://localhost:5000${user.avatar_url}` : "/placeholder-user.jpg"}
+                  alt="User Avatar"
+                  className="w-8 h-8 rounded-full object-cover border-2 border-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {user?.name || "User"}
+                </span>
+              </motion.button>
+
+              {/* User Dropdown Menu */}
+              <AnimatePresence>
+                {isUserMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                  >
+                    <div className="py-2">
+                      <motion.button
+                        whileHover={{ scale: 1.02, x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleNavigation("/settings")}
+                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200"
+                      >
+                        <User className="w-4 h-4" />
+                        <span className="text-sm font-medium">Profile</span>
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02, x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="text-sm font-medium">Sign Out</span>
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Mobile Menu Button */}
@@ -179,6 +241,19 @@ const Navbar = () => {
             exit={{ opacity: 0 }}
             onClick={() => setIsMobileMenuOpen(false)}
             className="fixed inset-0 bg-black/20 backdrop-blur-sm z-20 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* User Menu Backdrop */}
+      <AnimatePresence>
+        {isUserMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsUserMenuOpen(false)}
+            className="fixed inset-0 z-10 md:hidden"
           />
         )}
       </AnimatePresence>
