@@ -28,8 +28,8 @@ class MLProcessor:
         self.model = self._load_model()
     
     def _load_model(self):
-        """Load the pre-trained ML model"""
-        model_path = os.path.join(os.path.dirname(__file__), 'model', 'updated_exercise_rf_model.pkl')
+        """Load the bundled exercise model (type + form)."""
+        model_path = os.path.join(os.path.dirname(__file__), 'models', 'exercise_model.pkl')
         try:
             if os.path.exists(model_path):
                 return joblib.load(model_path)
@@ -143,45 +143,269 @@ class MLProcessor:
             return np.zeros(20)
     
     
+    def _get_point(self, landmarks, name):
+        return [
+            landmarks[self.mp_pose.PoseLandmark[name].value].x,
+            landmarks[self.mp_pose.PoseLandmark[name].value].y
+        ]
+
+    def _angle_between(self, a, b, c):
+        try:
+            a = np.array(a, dtype=float)
+            b = np.array(b, dtype=float)
+            c = np.array(c, dtype=float)
+            ab = a - b
+            cb = c - b
+            dot = float(np.dot(ab, cb))
+            den = float(np.linalg.norm(ab) * np.linalg.norm(cb))
+            if den == 0:
+                return 0.0
+            ang = np.degrees(np.arccos(np.clip(dot / den, -1.0, 1.0)))
+            if ang > 180.0:
+                ang = 360.0 - ang
+            return float(ang)
+        except Exception:
+            return 0.0
+
+    def _angle_to_vertical(self, p_from, p_to):
+        try:
+            v = np.array([p_to[0] - p_from[0], p_to[1] - p_from[1]], dtype=float)
+            vertical = np.array([0.0, 1.0], dtype=float)
+            dot = float(np.dot(v, vertical))
+            den = float(np.linalg.norm(v) * np.linalg.norm(vertical))
+            if den == 0:
+                return 0.0
+            return float(np.degrees(np.arccos(np.clip(dot / den, -1.0, 1.0))))
+        except Exception:
+            return 0.0
+
+    def _euclidean_distance(self, p1, p2):
+        try:
+            return float(np.linalg.norm(np.array(p1, dtype=float) - np.array(p2, dtype=float)))
+        except Exception:
+            return 0.0
+
+    def _phase_from_index(self, idx: int, total: int):
+        if total <= 0:
+            return 'start'
+        third = total // 3 if total >= 3 else 1
+        if idx < third:
+            return 'start'
+        elif idx < 2 * third:
+            return 'mid'
+        return 'end'
+
+    def _extract_row(self, landmarks):
+        def gp(n):
+            return self._get_point(landmarks, n)
+
+        left_shoulder = gp('LEFT_SHOULDER')
+        right_shoulder = gp('RIGHT_SHOULDER')
+        left_elbow = gp('LEFT_ELBOW')
+        right_elbow = gp('RIGHT_ELBOW')
+        left_wrist = gp('LEFT_WRIST')
+        right_wrist = gp('RIGHT_WRIST')
+        left_hip = gp('LEFT_HIP')
+        right_hip = gp('RIGHT_HIP')
+        left_knee = gp('LEFT_KNEE')
+        right_knee = gp('RIGHT_KNEE')
+        left_ankle = gp('LEFT_ANKLE')
+        right_ankle = gp('RIGHT_ANKLE')
+        left_foot = gp('LEFT_FOOT_INDEX')
+        right_foot = gp('RIGHT_FOOT_INDEX')
+        nose = gp('NOSE')
+
+        right_elbow_angle = self._angle_between(right_shoulder, right_elbow, right_wrist)
+        left_elbow_angle = self._angle_between(left_shoulder, left_elbow, left_wrist)
+        right_shoulder_angle = self._angle_between(right_elbow, right_shoulder, right_hip)
+        left_shoulder_angle = self._angle_between(left_elbow, left_shoulder, left_hip)
+        right_hip_angle = self._angle_between(right_shoulder, right_hip, right_knee)
+        left_hip_angle = self._angle_between(left_shoulder, left_hip, left_knee)
+        right_knee_angle = self._angle_between(right_hip, right_knee, right_ankle)
+        left_knee_angle = self._angle_between(left_hip, left_knee, left_ankle)
+        right_ankle_angle = self._angle_between(right_knee, right_ankle, right_foot)
+        left_ankle_angle = self._angle_between(left_knee, left_ankle, left_foot)
+
+        shoulders_mid = [(left_shoulder[0] + right_shoulder[0]) / 2.0, (left_shoulder[1] + right_shoulder[1]) / 2.0]
+        hips_mid = [(left_hip[0] + right_hip[0]) / 2.0, (left_hip[1] + right_hip[1]) / 2.0]
+        back_angle = self._angle_to_vertical(shoulders_mid, hips_mid)
+        neck_angle = self._angle_to_vertical(shoulders_mid, nose)
+
+        symmetry_pairs = [
+            (left_elbow_angle, right_elbow_angle),
+            (left_shoulder_angle, right_shoulder_angle),
+            (left_hip_angle, right_hip_angle),
+            (left_knee_angle, right_knee_angle),
+            (left_ankle_angle, right_ankle_angle),
+        ]
+        symmetry_diff = float(np.mean([abs(l - r) for l, r in symmetry_pairs]))
+
+        d_shoulders = self._euclidean_distance(left_shoulder, right_shoulder)
+        d_knees = self._euclidean_distance(left_knee, right_knee)
+        d_ankles = self._euclidean_distance(left_ankle, right_ankle)
+        stance_width = float(np.mean([d_shoulders, d_knees, d_ankles]))
+
+        row = {
+            'right_elbow_angle': right_elbow_angle,
+            'left_elbow_angle': left_elbow_angle,
+            'right_shoulder_angle': right_shoulder_angle,
+            'left_shoulder_angle': left_shoulder_angle,
+            'right_hip_angle': right_hip_angle,
+            'left_hip_angle': left_hip_angle,
+            'right_knee_angle': right_knee_angle,
+            'left_knee_angle': left_knee_angle,
+            'right_ankle_angle': right_ankle_angle,
+            'left_ankle_angle': left_ankle_angle,
+            'back_angle': back_angle,
+            'neck_angle': neck_angle,
+            'symmetry_diff': symmetry_diff,
+            'stance_width': stance_width,
+        }
+        angles = [
+            right_elbow_angle, left_elbow_angle,
+            right_shoulder_angle, left_shoulder_angle,
+            right_hip_angle, left_hip_angle,
+            right_knee_angle, left_knee_angle,
+            right_ankle_angle, left_ankle_angle,
+        ]
+        return row, angles
+
+    def _bad_reason(self, exc_type: str, row: dict):
+        if exc_type == 'pushup':
+            if row['back_angle'] > 25:
+                return 'lower hips'
+            if min(row['left_elbow_angle'], row['right_elbow_angle']) > 150:
+                return 'bend elbows more'
+        elif exc_type == 'squat':
+            if row['left_knee_angle'] > 120 or row['right_knee_angle'] > 120:
+                return 'go deeper'
+            if row['left_knee_angle'] < 60 or row['right_knee_angle'] < 60:
+                return 'avoid going too deep'
+        elif exc_type == 'pullup':
+            if row['left_elbow_angle'] > 160 and row['right_elbow_angle'] > 160:
+                return 'pull higher'
+        return 'None'
+
+    def _evenly_spaced_indices(self, start_frame: int, end_frame: int, desired: int):
+        if desired <= 0:
+            return []
+        if end_frame <= start_frame:
+            return [int(start_frame)] * desired
+        pts = np.linspace(start_frame, end_frame, num=desired)
+        return [int(round(p)) for p in pts]
+
+    def _select_motion_window_indices(self, cap, total_frames: int, fps: float, window_seconds: float = 5.0, desired: int = 12):
+        if fps is None or fps <= 0:
+            fps = 30.0
+        if total_frames <= 0:
+            return []
+
+        window_frames = int(max(1, round(window_seconds * fps)))
+        if total_frames <= window_frames:
+            return self._evenly_spaced_indices(0, max(0, total_frames - 1), desired)
+
+        coarse_step = max(1, int(round(fps)))  # ~1 sample per second
+        coarse_indices = list(range(0, total_frames, coarse_step))
+        coarse_frames_gray = []
+
+        for idx in coarse_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                coarse_frames_gray.append(None)
+                continue
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.resize(gray, (160, 90))
+            coarse_frames_gray.append(gray)
+
+        motion = [0.0] * len(coarse_frames_gray)
+        for i in range(1, len(coarse_frames_gray)):
+            a = coarse_frames_gray[i - 1]
+            b = coarse_frames_gray[i]
+            if a is None or b is None:
+                motion[i] = 0.0
+            else:
+                diff = cv2.absdiff(a, b)
+                motion[i] = float(np.sum(diff))
+
+        window_steps = max(1, int(round(window_seconds)))
+        best_sum = -1.0
+        best_start_step = 0
+        prefix = np.cumsum([0.0] + motion)
+        for start in range(0, max(1, len(motion) - window_steps + 1)):
+            end = start + window_steps
+            s = prefix[end] - prefix[start]
+            if s > best_sum:
+                best_sum = s
+                best_start_step = start
+
+        start_frame = coarse_indices[min(best_start_step, len(coarse_indices) - 1)]
+        end_frame = min(total_frames - 1, start_frame + window_frames - 1)
+
+        return self._evenly_spaced_indices(start_frame, end_frame, desired)
+
     def process_video(self, video_path):
-        """Process a video file and extract 100 features (10 angles X 10 frames)"""
+        """Extract per-frame features (12 frames) matching training pipeline.
+
+        Returns:
+        - X: (num_frames, num_features)
+        - angle_names: list of 10 labels
+        - angle_matrix: (num_frames, 10)
+        - phases: list of str length num_frames
+        """
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
                 raise ValueError("Could not open video")
 
-            angle_features = []
-            frame_count = 0
-            max_frames = 10  # We want exactly 10 frames
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            desired = 12
+            fps = float(cap.get(cv2.CAP_PROP_FPS))
+            indices = self._select_motion_window_indices(cap, total_frames, fps, window_seconds=5.0, desired=desired)
 
-            while frame_count < max_frames:
+            feature_rows = []
+            angle_rows = []
+            phases = []
+
+            for i, idx in enumerate(indices):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
-                if not ret:
-                    break
-
+                if not ret or frame is None:
+                    continue
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.pose.process(frame_rgb)
-
-                if results.pose_landmarks:
-                    angles = self.extract_model_angles(results.pose_landmarks.landmark)
-                    angle_features.append(angles)
-                    frame_count += 1
+                if not results.pose_landmarks:
+                    continue
+                row, angles = self._extract_row(results.pose_landmarks.landmark)
+                feature_rows.append(row)
+                angle_rows.append(angles)
+                phases.append(self._phase_from_index(i, len(indices)))
 
             cap.release()
 
-            if len(angle_features) < 10:
-                # Pad with zeros if fewer than 10 valid frames
-                for _ in range(10 - len(angle_features)):
-                    angle_features.append([0.0] * 10)
+            if not feature_rows:
+                return np.zeros((0, 0)), [], np.zeros((0, 10)), []
 
-            angle_features_np = np.array(angle_features).T  # shape: (10 angles, 10 frames)
-            flat_features = angle_features_np.flatten()     # shape: (100,)
-
-            return flat_features
-
+            ordered_cols = [
+                'right_elbow_angle', 'left_elbow_angle',
+                'right_shoulder_angle', 'left_shoulder_angle',
+                'right_hip_angle', 'left_hip_angle',
+                'right_knee_angle', 'left_knee_angle',
+                'right_ankle_angle', 'left_ankle_angle',
+                'back_angle', 'neck_angle',
+                'symmetry_diff', 'stance_width',
+            ]
+            X = np.array([[row[c] for c in ordered_cols] for row in feature_rows], dtype=float)
+            angle_matrix = np.array(angle_rows, dtype=float)
+            angle_names = [
+                "Right Elbow", "Left Elbow", "Right Shoulder", "Left Shoulder",
+                "Right Hip", "Left Hip", "Right Knee", "Left Knee",
+                "Right Ankle", "Left Ankle",
+            ]
+            return X, angle_names, angle_matrix, phases
         except Exception as e:
             logger.error(f"Video processing error: {str(e)}")
-            return np.zeros(100)
+            return np.zeros((0, 0)), [], np.zeros((0, 10)), []
 
     
     
@@ -191,9 +415,10 @@ class MLProcessor:
     def get_gemini_feedback(self, exercise_type, confidence, all_angles_dict):
         logger.info(f"Taking Feedback from gemini")
 
-        # Enhanced prompt with clear requirements
+        # Enhanced prompt with clear requirements and variety
         prompt = f"""
-    You are a world-class physical therapist and biomechanics expert analyzing a single exercise performance.
+    You are a world-class physical therapist and biomechanics expert analyzing a single exercise performance. 
+    IMPORTANT: Provide unique, varied feedback each time - never repeat the same phrases or suggestions.
 
     Please carefully review the following information:
     - Exercise type: {exercise_type}
@@ -202,31 +427,50 @@ class MLProcessor:
     CRITICAL CONTEXT:
     - The video footage is filmed from the person's SIDE (Right or Left).
     - Focus feedback only on SIDE-SPECIFIC JOINTS visible from this angle.
+    - Use diverse vocabulary and different coaching styles each time.
 
     JOINT ANGLE DATA (per frame, in degrees):
     {json.dumps(all_angles_dict, indent=2)}
 
     YOUR TASK (strictly follow these rules):
     1. **DO NOT provide feedback unless a joint is clearly outside the expected range.** Empty if all good.
-    2. **For each problematic joint (only if out of range), list 1–2 specific, actionable corrections.** If not, omit it.
+    2. **For each problematic joint (only if out of range), list 1–2 specific, actionable corrections using varied language.**
     3. **Do NOT compare left/right joints here**—this is a side view; only visible joints are relevant.
-    4. **Always add a single, motivational, but honest summary** (3–4 sentences). Call out what was done well and what to focus on.
+    4. **Always add a unique, motivational, but honest summary** (3–4 sentences). Use different positive reinforcement phrases each time.
     5. **Return ONLY a valid JSON object with NO extra text, NO markdown, NO backticks, NO explanations.**
     6. **If no joint is out of range, corrections object should be empty.**
+    7. **If AI model confidence is 95% or higher, return NO improvements at all.** In that case, the "corrections" object MUST be empty and the "summary" should be praise-only without any suggestions.
+    8. **VARY YOUR LANGUAGE: Use synonyms, different coaching styles, and unique motivational phrases.**
+
+    VARIETY REQUIREMENTS:
+    - Use different coaching styles: technical, encouraging, detailed, concise, etc.
+    - Vary your positive reinforcement: "excellent work", "great job", "fantastic effort", "outstanding performance", etc.
+    - Use diverse correction language: "adjust", "modify", "refine", "tweak", "optimize", etc.
+    - Include different motivational elements: progress focus, technique emphasis, consistency reminders, etc.
 
     REQUIRED JSON FORMAT:
     {{
         "corrections": {{}},
-        "summary": "Your performance analysis here"
+        "summary": "Your unique performance analysis here"
     }}
 
-    EXAMPLE (do not copy content, only structure):
+    EXAMPLE STRUCTURES (vary these approaches):
     {{
         "corrections": {{
-            "Shoulder": ["Keep shoulder blade stable"],
-            "Elbow": ["Do not lock elbow at top"]
+            "Shoulder": ["Maintain shoulder stability throughout movement"],
+            "Elbow": ["Avoid hyperextension at the top position"]
         }},
-        "summary": "Good overall form with minor adjustments needed for elbow positioning."
+        "summary": "Solid foundation with room for refinement. Your dedication shows in the execution."
+    }}
+
+    OR
+
+    {{
+        "corrections": {{
+            "Hip": ["Engage core to stabilize hip position"],
+            "Knee": ["Maintain consistent knee tracking"]
+        }},
+        "summary": "Impressive effort! Small tweaks will elevate your form to the next level."
     }}
 
     Return ONLY the JSON object, nothing else:
@@ -306,56 +550,108 @@ class MLProcessor:
 
 
     def process_file(self, file_path, file_type, exercise_type):
-        """Main processing function with improved error handling"""
+        """Analyze a video with the new model bundle and return results."""
         try:
             logger.info(f"Processing {file_type} file: {file_path}")
-            
-            if file_type == 'video':
-                features = self.process_video(file_path)
-            else:
-                features = self.process_image(file_path)
-            
-            # Make prediction
-            features_reshaped = features.reshape(1, -1)
-            proba = self.model.predict_proba(features_reshaped)[0]
-            prediction = int(np.argmax(proba))
-            confidence = float(np.max(proba) * 100)
 
-            # Reshape features into (frames, 10 angles)
-            num_frames = len(features) // 10
-            all_angles = features.reshape(num_frames, 10)
+            if file_type != 'video':
+                return {
+                    'accuracy': 0.0,
+                    'form_status': 'Error',
+                    'corrections': {},
+                    'feedback': 'Only video inputs are supported for analysis.',
+                    'prediction': 0,
+                    'exercise_type': exercise_type
+                }
 
-            # Create joint name → list of angles per frame
-            angle_names = [
-                "Right Elbow", "Left Elbow", "Right Shoulder", "Left Shoulder",
-                "Right Hip", "Left Hip", "Right Knee", "Left Knee",
-                "Right Ankle", "Left Ankle"
-            ]
+            X, angle_names, angle_matrix, phases = self.process_video(file_path)
+            if X.size == 0:
+                return {
+                    'accuracy': 0.0,
+                    'form_status': 'Error',
+                    'corrections': {},
+                    'feedback': 'Could not extract pose from video.',
+                    'prediction': 0,
+                    'exercise_type': exercise_type
+                }
+
+            bundle = self.model
+            if not bundle:
+                return {
+                    'accuracy': 0.0,
+                    'form_status': 'Error',
+                    'corrections': {},
+                    'feedback': 'Model not loaded.',
+                    'prediction': 0,
+                    'exercise_type': exercise_type
+                }
+
+            phase_map = bundle.get('phase_mapping', {'start': 0, 'mid': 1, 'end': 2})
+            phase_idx = np.array([phase_map.get(p, 1) for p in phases], dtype=int).reshape(-1, 1)
+            X_full = np.hstack([X, phase_idx])
+
+            type_model = bundle['type_model']
+            type_proba = type_model.predict_proba(X_full)
+            avg_type_proba = type_proba.mean(axis=0)
+            type_idx = int(np.argmax(avg_type_proba))
+            predicted_ex_type = str(type_model.classes_[type_idx])
+
+            form_model = bundle['form_model']
+            form_proba = form_model.predict_proba(X_full)
+            avg_form_proba = form_proba.mean(axis=0)
+            form_idx = int(np.argmax(avg_form_proba))
+            predicted_form = str(form_model.classes_[form_idx])
+            per_frame_conf = form_proba.max(axis=1)
+            confidence = float(per_frame_conf.mean() * 100.0)
+
+            correction_needed = 'None'
+            if predicted_form == 'bad':
+                reasons = []
+                for row in X:
+                    row_dict = {
+                        'right_elbow_angle': row[0], 'left_elbow_angle': row[1],
+                        'right_shoulder_angle': row[2], 'left_shoulder_angle': row[3],
+                        'right_hip_angle': row[4], 'left_hip_angle': row[5],
+                        'right_knee_angle': row[6], 'left_knee_angle': row[7],
+                        'right_ankle_angle': row[8], 'left_ankle_angle': row[9],
+                        'back_angle': row[10], 'neck_angle': row[11],
+                        'symmetry_diff': row[12], 'stance_width': row[13],
+                    }
+                    reasons.append(self._bad_reason(predicted_ex_type, row_dict))
+                reasons = [r for r in reasons if r and r != 'None']
+                if reasons:
+                    correction_needed = max(set(reasons), key=reasons.count)
+
             all_angles_dict = {
-                name: [round(float(all_angles[f][i]), 2) for f in range(num_frames)]
+                name: [round(float(angle_matrix[f][i]), 2) for f in range(angle_matrix.shape[0])]
                 for i, name in enumerate(angle_names)
             }
 
-            # Get Gemini feedback
-            gemini_feedback = self.get_gemini_feedback(exercise_type, confidence, all_angles_dict)
-
-            # Ensure corrections is a dictionary (not a list) for frontend compatibility
-            corrections = gemini_feedback.get("corrections", {})
+            gemini_feedback = self.get_gemini_feedback(predicted_ex_type, confidence, all_angles_dict)
+            corrections = gemini_feedback.get('corrections', {})
             if isinstance(corrections, list):
-                # Convert list to empty dict if it's somehow a list
                 corrections = {}
-            
+            if confidence >= 95.0:
+                corrections = {}
+                gemini_feedback['summary'] = (
+                    "Outstanding performance! Your form is excellent and requires no adjustments. Keep up the great work."
+                )
+            if predicted_form == 'bad' and not corrections:
+                corrections = {'Overall': [correction_needed]}
+
             result = {
+                'predicted_exercise_type': predicted_ex_type,
+                'predicted_form': predicted_form,
                 'accuracy': confidence,
+                'correction_needed': correction_needed,
                 'form_status': 'Good' if confidence > 80 else 'Average' if confidence > 60 else 'Poor',
-                'corrections': corrections,  # Always a dictionary
-                'feedback': gemini_feedback.get("summary", "Analysis completed."),
-                'prediction': prediction,
-                'exercise_type': exercise_type
+                'corrections': corrections,
+                'feedback': gemini_feedback.get('summary', 'Analysis completed.'),
+                'prediction': 1 if predicted_form == 'good' else 0,
+                'exercise_type': predicted_ex_type,
             }
-            
-            logger.info(f"Processing complete. Prediction: {prediction}, Accuracy: {confidence:.2f}%")
-            logger.info(f"Result corrections type: {type(result['corrections'])}")
+
+            logger.info(f"Processing complete. Type: {predicted_ex_type}, Form: {predicted_form}, Accuracy: {confidence:.2f}%")
             return result
 
         except Exception as e:
@@ -363,109 +659,8 @@ class MLProcessor:
             return {
                 'accuracy': 0.0,
                 'form_status': 'Error',
-                'corrections': {},  # Always a dictionary, never a list
-                'feedback': 'Unable to analyze the file. Please ensure it contains clear body movement.',
+                'corrections': {},
+                'feedback': 'Unable to analyze the file. Please try again later.',
                 'prediction': 0,
                 'exercise_type': exercise_type
             }
-
-    # def process_image(self, image_path):
-    #     """Process a single image"""
-    #     try:
-    #         image = cv2.imread(image_path)
-    #         if image is None:
-    #             raise ValueError("Could not load image")
-            
-    #         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    #         results = self.pose.process(image_rgb)
-            
-    #         if results.pose_landmarks:
-    #             features = self.extract_pose_features(results.pose_landmarks.landmark)
-    #             return features
-    #         else:
-    #             return np.zeros(20)
-    #     except Exception as e:
-    #         logger.error(f"Image processing error: {str(e)}")
-    #         return np.zeros(20)
-    
-    
-    # def generate_feedback(self, prediction, exercise_type, features):
-    #     """Generate feedback based on prediction and exercise type"""
-    #     feedback_map = {
-    #         0: "Poor",
-    #         1: "Fair", 
-    #         2: "Good"
-    #     }
-        
-    #     form_status = feedback_map.get(prediction, "Poor")
-        
-    #     # Generate corrections based on exercise type and prediction
-    #     corrections = []
-    #     feedback = ""
-        
-    #     if exercise_type.lower() == 'pushup':
-    #         if prediction == 0:  # Poor
-    #             corrections = [
-    #                 "Keep your back straight and aligned",
-    #                 "Lower your chest closer to the ground",
-    #                 "Push up with full arm extension"
-    #             ]
-    #             feedback = "Focus on maintaining proper form. Your pushup technique needs improvement."
-    #         elif prediction == 1:  # Fair
-    #             corrections = [
-    #                 "Maintain consistent tempo",
-    #                 "Keep core engaged throughout the movement"
-    #             ]
-    #             feedback = "Good effort! Small adjustments will perfect your form."
-    #         else:  # Good
-    #             corrections = []
-    #             feedback = "Excellent pushup form! Keep up the great work."
-        
-    #     elif exercise_type.lower() == 'squat':
-    #         if prediction == 0:  # Poor
-    #             corrections = [
-    #                 "Keep your knees aligned with your toes",
-    #                 "Lower down until thighs are parallel to floor",
-    #                 "Keep your chest up and back straight"
-    #             ]
-    #             feedback = "Work on your squat depth and knee alignment."
-    #         elif prediction == 1:  # Fair
-    #             corrections = [
-    #                 "Try to go deeper in your squat",
-    #                 "Keep weight on your heels"
-    #             ]
-    #             feedback = "Good squat! Focus on depth and balance."
-    #         else:  # Good
-    #             corrections = []
-    #             feedback = "Perfect squat form! Excellent technique."
-        
-    #     else:  # General exercise
-    #         if prediction == 0:  # Poor
-    #             corrections = [
-    #                 "Focus on proper body alignment",
-    #                 "Control your movement speed",
-    #                 "Maintain consistent form"
-    #             ]
-    #             feedback = "Keep practicing to improve your form."
-    #         elif prediction == 1:  # Fair
-    #             corrections = [
-    #                 "Fine-tune your technique",
-    #                 "Maintain focus throughout the movement"
-    #             ]
-    #             feedback = "Good form! Small improvements will make it perfect."
-    #         else:  # Good
-    #             corrections = []
-    #             feedback = "Excellent form! Keep up the great work."
-        
-    #     # Calculate accuracy based on prediction
-    #     accuracy_map = {0: 45.0, 1: 75.0, 2: 95.0}
-    #     accuracy = accuracy_map.get(prediction, 50.0)
-        
-    #     return {
-    #         'accuracy': accuracy,
-    #         'form_status': form_status,
-    #         'corrections': corrections,
-    #         'feedback': feedback,
-    #         'prediction': int(prediction),
-    #         'exercise_type': exercise_type
-    #     }

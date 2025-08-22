@@ -94,7 +94,7 @@ const AuthPage = () => {
             >
               <Zap className="w-12 h-12 text-white" />
             </motion.div>
-            <h1 className="text-3xl font-bold text-white mb-2">SkillAI</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">SkillSync</h1>
             <p className="text-white/80">Elevate Your Skills with AI</p>
           </div>
 

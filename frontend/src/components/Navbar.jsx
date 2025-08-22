@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap, User, LogOut } from "lucide-react"
+import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap, User, LogOut, Camera, Video } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
 const Navbar = () => {
@@ -16,6 +16,7 @@ const Navbar = () => {
   const navItems = [
     { path: "/", icon: Home, label: "Dashboard" },
     { path: "/upload", icon: Upload, label: "Upload" },
+    { path: "/video-comparison", icon: Video, label: "Video Comparison" },
     { path: "/results", icon: BarChart3, label: "Results" },
     { path: "/history", icon: History, label: "History" },
     { path: "/settings", icon: Settings, label: "Settings" },
@@ -55,7 +56,7 @@ const Navbar = () => {
               >
                 <Zap className="w-8 h-8 text-blue-600 dark:text-blue-400" />
               </motion.div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">SkillAI</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">SkillSync</span>
             </motion.div>
 
             {/* Desktop Navigation */}

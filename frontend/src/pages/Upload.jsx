@@ -24,15 +24,10 @@ import {
 
 const exerciseTypes = [
   "pushup",
-  "pullup",
   "squat",
-  "deadlift",
-  "bench press",
-  "overhead press",
-  "bicep curl",
-  "tricep extension",
-  "lunge",
-  "plank"
+  "pullup",
+  "benchpress",
+  "shoulderpress",
 ];
 
 const Upload = () => {

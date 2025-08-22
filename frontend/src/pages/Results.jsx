@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
 import { motion, AnimatePresence } from "framer-motion";
 import React from "react";
@@ -38,6 +38,7 @@ const styles = StyleSheet.create({
 
 const Results = () => {
   const { uploadId } = useParams(); // this gets the /:uploadId from the URL
+  const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [score, setScore] = useState(0);
@@ -87,11 +88,16 @@ const Results = () => {
             }
           }, 50);
         } else {
-          throw new Error(data.error || "Failed to load result");
+          // Handle specific error cases
+          if (res.status === 404) {
+            throw new Error("No analysis data found. Please upload a video first.");
+          } else {
+            throw new Error(data.error || "Failed to load result");
+          }
         }
       } catch (err) {
         console.error("Error fetching analysis data:", err);
-        setError("Failed to load analysis data.");
+        setError(err.message || "Failed to load analysis data.");
       } finally {
         setLoading(false);
       }
@@ -164,8 +170,57 @@ const Results = () => {
     return (
       <div className="text-center py-10 text-gray-500">Loading analysis...</div>
     );
-  if (error)
-    return <div className="text-center py-10 text-red-500">{error}</div>;
+  
+  if (error) {
+    const isNoDataError = error.includes("No analysis data found");
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-16">
+          <div className="mb-6">
+            <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              {isNoDataError ? "No Analysis Data" : "Error Loading Results"}
+            </h2>
+            <p className={`text-lg ${isNoDataError ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
+              {error}
+            </p>
+          </div>
+          
+          {isNoDataError && (
+            <div className="space-y-4">
+              <p className="text-gray-500 dark:text-gray-400">
+                Upload a video to get started with your skill analysis
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/upload')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors duration-200"
+              >
+                Upload Video
+              </motion.button>
+            </div>
+          )}
+          
+          {!isNoDataError && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => window.location.reload()}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors duration-200"
+            >
+              Try Again
+            </motion.button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
   if (!analysisData) return null; // fallback
 
   const ScoreRing = ({
@@ -285,18 +340,9 @@ const Results = () => {
                   Uploaded {analysisData.uploadDate} • {analysisData.duration}
                 </p>
               </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Report</span>
-              </motion.button>
             </div>
 
             {/* Video Container */}
-            {console.log(analysisData.videoUrl)}
             <div className="relative bg-gray-900 rounded-xl overflow-hidden mb-4">
               <div className="grid grid-cols-2 gap-4">
                 {/* User video */}
@@ -311,47 +357,19 @@ const Results = () => {
                 {/* Reference video */}
                 <div className="reference-container">
                   <video 
-                    src={`/${analysisData.exercise_type || 'pushup'}.mp4`} 
+                    src={`/${analysisData.title.split(' ')[0].toLowerCase()}.mp4`} 
                     controls 
                     autoPlay 
                     muted 
+                    onError={(e) => {
+                      e.target.src = '/pushup.mp4';
+                    }}
                   />
+                  <p className="text-sm text-gray-500 mt-2 text-center">
+                    Reference: {analysisData.title.split(' ')[0]} demonstration
+                  </p>
                 </div>
               </div>
-
-              {/* Play Button Overlay */}
-              {/* <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors duration-200"
-              >
-                <div className="bg-white/90 rounded-full p-4">
-                  {isPlaying ? (
-                    <Pause className="w-8 h-8 text-gray-900" />
-                  ) : (
-                    <Play className="w-8 h-8 text-gray-900 ml-1" />
-                  )}
-                </div>
-              </motion.button> */}
-
-              {/* Key Moments Overlay */}
-              {/* <div className="absolute bottom-4 left-4 right-4">
-                <div className="flex space-x-2">
-                  {analysisData.keyMoments.map((moment, index) => (
-                    <motion.button
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 + 0.5 }}
-                      whileHover={{ scale: 1.05 }}
-                      className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 text-xs font-medium text-gray-900"
-                    >
-                      {moment.time}s - {moment.label}
-                    </motion.button>
-                  ))}
-                </div>
-              </div> */}
             </div>
 
             {/* Video Controls */}
@@ -433,45 +451,57 @@ const Results = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Performance Breakdown
             </h3>
-            <div className="space-y-4">
-              {Object.entries(analysisData.breakdown).map(
-                ([key, value], index) => (
-                  <motion.div
-                    key={key}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + index * 0.1 }}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
-                      {key}
-                    </span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${value}%` }}
-                          transition={{
-                            delay: 0.7 + index * 0.1,
-                            duration: 0.8,
-                          }}
-                          className={`h-2 rounded-full ${
-                            value >= 85
-                              ? "bg-green-500"
-                              : value >= 70
-                              ? "bg-yellow-500"
-                              : "bg-red-500"
-                          }`}
-                        />
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white w-8">
-                        {value}%
-                      </span>
-                    </div>
-                  </motion.div>
-                )
-              )}
-            </div>
+            {(() => {
+              const clamp = (n) => Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0));
+              const base = Number(analysisData?.overallScore ?? 0);
+              const correctionsCount = Array.isArray(analysisData?.suggestions) ? analysisData.suggestions.length : 0;
+              const form = clamp(base - correctionsCount * 1.5);
+              const timing = clamp(base - Math.min(12, correctionsCount * 2.0));
+              const accuracy = clamp(base);
+              const consistency = clamp(0.6 * base + 0.4 * (100 - correctionsCount * 5));
+              const breakdown = {
+                form,
+                timing,
+                accuracy,
+                consistency,
+              };
+              return (
+                <div className="space-y-4">
+                  {Object.entries(breakdown).map(([key, rawValue], index) => {
+                    const value = clamp(rawValue);
+                    const valueText = value.toFixed(2);
+                    return (
+                      <motion.div
+                        key={key}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.5 + index * 0.1 }}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
+                          {key}
+                        </span>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-20 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${valueText}%` }}
+                              transition={{ delay: 0.7 + index * 0.1, duration: 0.8 }}
+                              className={`h-2 rounded-full ${
+                                value >= 85 ? "bg-green-500" : value >= 70 ? "bg-yellow-500" : "bg-red-500"
+                              }`}
+                            />
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white w-12 text-right">
+                            {valueText}%
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </motion.div>
       </div>
@@ -587,6 +617,7 @@ const Results = () => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+            onClick={() => navigate('/upload')}
           >
             <div className="flex items-center justify-center space-x-2">
               <Award className="w-5 h-5" />

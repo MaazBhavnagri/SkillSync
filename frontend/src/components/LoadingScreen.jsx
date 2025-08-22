@@ -31,7 +31,7 @@ const LoadingScreen = () => {
           transition={{ delay: 0.5 }}
           className="text-4xl font-bold text-white mb-4"
         >
-          SkillAI
+          SkillSync
         </motion.h1>
 
         <motion.p

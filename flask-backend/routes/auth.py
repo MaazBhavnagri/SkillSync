@@ -34,7 +34,7 @@ def login():
             return jsonify({'error': 'Invalid email format'}), 400
         
         user = User.query.filter_by(email=email).first()
-        
+        print(user)
         if user and user.check_password(password) and user.is_active:
             login_user(user)  # Flask-Login handles session creation
             session['user_id'] = user.id  # Additional session data if needed

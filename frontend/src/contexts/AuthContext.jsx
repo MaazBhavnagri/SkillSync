@@ -24,10 +24,19 @@ export const AuthProvider = ({ children }) => {
 
   const API_BASE = (import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api").replace(/\/$/, "");
 
-  const fetchWithTimeout = (url, options = {}, timeoutMs = 7000) => {
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 20000) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("Request timed out. Please try again.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   };
 
   // Verify session on initial load

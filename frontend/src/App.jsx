@@ -12,6 +12,8 @@ import Upload from "./pages/Upload"
 import Results from "./pages/Results"
 import History from "./pages/History"
 import Settings from "./pages/Settings"
+
+import VideoComparison from "./pages/VideoComparison"
 import LoadingScreen from "./components/LoadingScreen"
 import "./App.css"
 
@@ -53,10 +55,12 @@ function AppContent() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/upload" element={<Upload />} />
+
                 <Route path="/results/:uploadId" element={<Results />} />
                 <Route path="/results" element={<Results />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/video-comparison" element={<VideoComparison />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

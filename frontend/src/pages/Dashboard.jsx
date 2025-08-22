@@ -1,9 +1,7 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
-import { Upload, History, TrendingUp, Award, Target, Zap, Play, Star, Calendar, BarChart3 } from "lucide-react"
+import { Upload, History, TrendingUp, Award, Target, Zap, Play, Star, Calendar, BarChart3, Camera } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
 const Dashboard = () => {
@@ -52,17 +50,20 @@ const Dashboard = () => {
         if (allUploadsRes.ok) {
           const allUploadsData = await allUploadsRes.json()
           const uploads = allUploadsData.uploads || []
-          
+
           const totalUploads = uploads.length
-          const averageScore = uploads.length > 0 
-            ? Math.round(uploads.reduce((sum, upload) => sum + upload.accuracy, 0) / uploads.length)
+          const last5 = uploads.slice(-5)
+          const avgRaw = last5.length
+            ? last5.reduce((sum, u) => sum + (Number(u.accuracy) || 0), 0) / last5.length
             : 0
-          const skillsImproved = new Set(uploads.map(upload => upload.exercise_type)).size
-          const achievements = Math.floor(totalUploads / 5) // Simple achievement calculation
-          
+          const averageScore = Number(avgRaw.toFixed(2))
+
+          const skillsImproved = new Set(uploads.map(u => (u.exercise_type || '').toLowerCase())).size
+          const achievements = Math.floor(totalUploads / 5)
+
           setStats([
             { label: "Total Uploads", value: totalUploads.toString(), icon: Upload, color: "blue" },
-            { label: "Average Score", value: `${averageScore}%`, icon: Target, color: "green" },
+            { label: "Average Score", value: `${averageScore.toFixed(2)}%`, icon: Target, color: "green" },
             { label: "Skills Improved", value: skillsImproved.toString(), icon: TrendingUp, color: "purple" },
             { label: "Achievements", value: achievements.toString(), icon: Award, color: "yellow" },
           ])
@@ -258,7 +259,7 @@ const Dashboard = () => {
       </motion.div>
 
       {/* Quick Actions */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <motion.button
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
@@ -268,6 +269,17 @@ const Dashboard = () => {
           <Upload className="w-8 h-8 mb-4" />
           <h3 className="text-xl font-bold mb-2">Upload Now</h3>
           <p className="text-white/80">Upload a new skill video or image for AI analysis</p>
+        </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.02, y: -5 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => navigate("/video-comparison")}
+          className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-left"
+        >
+          <Camera className="w-8 h-8 mb-4" />
+          <h3 className="text-xl font-bold mb-2">Live Comparison Analysis</h3>
+          <p className="text-white/80">Side-by-side live feedback with a reference</p>
         </motion.button>
 
         <motion.button

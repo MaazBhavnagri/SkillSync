@@ -22,7 +22,6 @@ def allowed_file(filename):
 @login_required_api
 def upload_file():
     try:
-        # Replace get_jwt_identity() with current_user.id
         user = current_user  # Flask-Login provides this
         
         if not user:
