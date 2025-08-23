@@ -7,7 +7,7 @@ import * as tf from "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-backend-webgl";
 
 const MIN_KEYPOINT_SCORE = 0.3;
-const ANGLE_DIFF_THRESHOLD = 15; // degrees
+const ANGLE_DIFF_THRESHOLD = 15;
 
 const JOINTS = {
   left_elbow: ["left_shoulder", "left_elbow", "left_wrist"],
