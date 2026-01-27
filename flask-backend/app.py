@@ -70,11 +70,13 @@ def create_app():
     from routes.upload import upload_bp
     from routes.history import history_bp
     from routes.settings import settings_bp
+    from routes.exercises import exercises_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(upload_bp, url_prefix='/api')
     app.register_blueprint(history_bp, url_prefix='/api')
     app.register_blueprint(settings_bp, url_prefix='/api')
+    app.register_blueprint(exercises_bp, url_prefix='/api')
     
     app.config.update(
     SESSION_COOKIE_HTTPONLY=True,

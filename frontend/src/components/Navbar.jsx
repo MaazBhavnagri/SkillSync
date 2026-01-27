@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap, User, LogOut, Camera, Video } from "lucide-react"
+import { Home, Upload, BarChart3, History, Settings, Menu, X, Zap, User, LogOut, Camera, Video, Lock } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
 const Navbar = () => {
@@ -13,10 +13,21 @@ const Navbar = () => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
+  const userLevel = user?.level || 1
+  const REQUIRED_LEVEL_FOR_VIDEO_COMPARISON = 2
+
   const navItems = [
     { path: "/", icon: Home, label: "Dashboard" },
-    { path: "/upload", icon: Upload, label: "Upload" },
-    { path: "/video-comparison", icon: Video, label: "Video Comparison" },
+    { path: "/pose-library", icon: Video, label: "Pose Library" },
+    // Skill Lab replaces the old Upload nav destination
+    { path: "/skill-lab", icon: Upload, label: "Skill Lab" },
+    { 
+      path: "/video-comparison", 
+      icon: Video, 
+      label: "Video Comparison",
+      requiresLevel: REQUIRED_LEVEL_FOR_VIDEO_COMPARISON,
+      locked: userLevel < REQUIRED_LEVEL_FOR_VIDEO_COMPARISON
+    },
     { path: "/results", icon: BarChart3, label: "Results" },
     { path: "/history", icon: History, label: "History" },
     { path: "/settings", icon: Settings, label: "Settings" },
@@ -64,22 +75,26 @@ const Navbar = () => {
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = location.pathname === item.path
+                const isLocked = item.locked
 
                 return (
                   <motion.button
                     key={item.path}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleNavigation(item.path)}
+                    whileHover={!isLocked ? { scale: 1.05 } : {}}
+                    whileTap={!isLocked ? { scale: 0.95 } : {}}
+                    onClick={() => !isLocked && handleNavigation(item.path)}
                     className={`relative flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
-                      isActive
+                      isLocked
+                        ? "text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60"
+                        : isActive
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"
                         : "text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
+                    title={isLocked ? `Requires Level ${item.requiresLevel}` : item.label}
                   >
                     <motion.div
                       animate={
-                        isActive
+                        isActive && !isLocked
                           ? {
                               rotate: [0, 10, -10, 0],
                               scale: [1, 1.1, 1],
@@ -88,11 +103,20 @@ const Navbar = () => {
                       }
                       transition={{ duration: 0.5 }}
                     >
-                      <Icon className="w-5 h-5" />
+                      {isLocked ? (
+                        <Lock className="w-4 h-4" />
+                      ) : (
+                        <Icon className="w-5 h-5" />
+                      )}
                     </motion.div>
                     <span className="font-medium">{item.label}</span>
+                    {isLocked && (
+                      <span className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                        L{item.requiresLevel}
+                      </span>
+                    )}
 
-                    {isActive && (
+                    {isActive && !isLocked && (
                       <motion.div
                         layoutId="activeTab"
                         className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"
@@ -207,6 +231,7 @@ const Navbar = () => {
               {navItems.map((item, index) => {
                 const Icon = item.icon
                 const isActive = location.pathname === item.path
+                const isLocked = item.locked
 
                 return (
                   <motion.button
@@ -214,17 +239,29 @@ const Navbar = () => {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    whileHover={{ scale: 1.02, x: 4 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleNavigation(item.path)}
+                    whileHover={!isLocked ? { scale: 1.02, x: 4 } : {}}
+                    whileTap={!isLocked ? { scale: 0.98 } : {}}
+                    onClick={() => !isLocked && handleNavigation(item.path)}
                     className={`w-full flex items-center space-x-3 px-4 py-3 text-left transition-all duration-200 ${
-                      isActive
+                      isLocked
+                        ? "text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60"
+                        : isActive
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border-r-2 border-blue-600 dark:border-blue-400"
                         : "text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
+                    title={isLocked ? `Requires Level ${item.requiresLevel}` : item.label}
                   >
-                    <Icon className="w-5 h-5" />
+                    {isLocked ? (
+                      <Lock className="w-5 h-5" />
+                    ) : (
+                      <Icon className="w-5 h-5" />
+                    )}
                     <span className="font-medium">{item.label}</span>
+                    {isLocked && (
+                      <span className="ml-auto text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                        L{item.requiresLevel}
+                      </span>
+                    )}
                   </motion.button>
                 )
               })}

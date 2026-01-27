@@ -125,7 +125,6 @@ def _phase_from_index(idx: int, total: int):
 
 
 def _extract_row_from_landmarks(landmarks, mp_pose):
-    # Collect 2D normalized points
     def gp(name):
         lm = landmarks[mp_pose.PoseLandmark[name].value]
         return [lm.x, lm.y]
@@ -164,7 +163,6 @@ def _extract_row_from_landmarks(landmarks, mp_pose):
     back_angle = _angle_to_vertical(shoulders_mid, hips_mid)
     neck_angle = _angle_to_vertical(shoulders_mid, nose)
 
-    # Derived
     symmetry_pairs = [
         (left_elbow_angle, right_elbow_angle),
         (left_shoulder_angle, right_shoulder_angle),

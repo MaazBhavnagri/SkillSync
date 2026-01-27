@@ -12,8 +12,10 @@ import Upload from "./pages/Upload"
 import Results from "./pages/Results"
 import History from "./pages/History"
 import Settings from "./pages/Settings"
-
+import SkillLab from "./pages/SkillLab"
+import ExerciseDetail from "./pages/ExerciseDetail"
 import VideoComparison from "./pages/VideoComparison"
+import PoseLibrary from "./pages/PoseLibrary"
 import LoadingScreen from "./components/LoadingScreen"
 import "./App.css"
 
@@ -54,7 +56,11 @@ function AppContent() {
             <main className="flex-1 pt-16">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/upload" element={<Upload />} />
+                {/* Skill Lab replaces the old Upload page route */}
+                <Route path="/pose-library" element={<PoseLibrary />} />
+                <Route path="/skill-lab" element={<SkillLab />} />
+                {/* Exercise detail view for a specific skill */}
+                <Route path="/skill-lab/:exerciseId" element={<ExerciseDetail />} />
 
                 <Route path="/results/:uploadId" element={<Results />} />
                 <Route path="/results" element={<Results />} />

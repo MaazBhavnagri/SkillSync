@@ -145,6 +145,11 @@ export const AuthProvider = ({ children }) => {
     setUser(updatedUser);
   };
 
+  // Refresh user data from backend
+  const refreshUser = async () => {
+    await verifySession();
+  };
+
   return (
     <>
       <NotificationModal
@@ -160,6 +165,8 @@ export const AuthProvider = ({ children }) => {
           signup,
           logout,
           updateUser,
+          refreshUser,
+          verifySession,
           isAuthenticated: !!user,
           loading,
         }}

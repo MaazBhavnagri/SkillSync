@@ -1,0 +1,92 @@
+{
+    "yoga": [
+        {
+            "id": "tree_pose",
+            "name": "Tree Pose (Vrksasana)",
+            "type": "image",
+            "image": "/poses/yoga/tree_pose.png",
+            "difficulty": "Beginner",
+            "description": "Standing balance pose that improves focus and stability."
+        },
+        {
+            "id": "warrior_ii",
+            "name": "Warrior II (Virabhadrasana II)",
+            "type": "image",
+            "image": "/poses/yoga/warrior_ii.png",
+            "difficulty": "Beginner",
+            "description": "Standing pose that strengthens legs and improves hip flexibility."
+        },
+        {
+            "id": "downdog",
+            "name": "Downward Facing Dog",
+            "type": "image",
+            "image": "/poses/yoga/downdog.png",
+            "difficulty": "Beginner",
+            "description": "Inversion that stretches the entire back body."
+        },
+        {
+            "id": "cobra_pose",
+            "name": "Cobra Pose",
+            "type": "video",
+            "image": "/poses/yoga/cobra_pose_loop.mp4",
+            "reference": "/poses/yoga/cobra_pose_loop.mp4",
+            "loop": true,
+            "defaultSpeed": 0.6,
+            "userAdjustableSpeed": true,
+            "difficulty": "Intermediate",
+            "description": "Backbending stretch that strengthens the spine."
+        }
+    ],
+    "physio": [
+        {
+            "id": "shoulder_abduction",
+            "name": "Shoulder Abduction",
+            "type": "image",
+            "image": "/poses/physio/shoulder_abduction.png",
+            "difficulty": "Rehab",
+            "description": "Lift arm to the side to strengthen shoulder deltoids."
+        },
+        {
+            "id": "squat",
+            "name": "Bodyweight Squat",
+            "type": "image",
+            "image": "/poses/physio/squat.png",
+            "difficulty": "Beginner",
+            "description": "Basic lower body strengthening exercise."
+        },
+        {
+            "id": "shoulder_flexion",
+            "name": "Shoulder Flexion",
+            "type": "video",
+            "image": "/poses/physio/shoulder_flexion_loop.mp4",
+            "reference": "/poses/physio/shoulder_flexion_loop.mp4",
+            "loop": true,
+            "defaultSpeed": 0.6,
+            "userAdjustableSpeed": true,
+            "difficulty": "Rehab",
+            "description": "Controlled arm lifting to improve range of motion."
+        }
+    ],
+    "rehab": [
+        {
+            "id": "knee_extension",
+            "name": "Seated Knee Extension",
+            "type": "image",
+            "image": "/poses/rehab/knee_extension.png",
+            "difficulty": "Rehab",
+            "description": "Strengthens quadriceps without weight bearing."
+        },
+        {
+            "id": "knee_extension_dynamic",
+            "name": "Dynamic Knee Extension",
+            "type": "video",
+            "image": "/poses/rehab/knee_extension_loop.mp4",
+            "reference": "/poses/rehab/knee_extension_loop.mp4",
+            "loop": true,
+            "defaultSpeed": 0.5,
+            "userAdjustableSpeed": true,
+            "difficulty": "Rehab",
+            "description": "Controlled knee movement for active recovery."
+        }
+    ]
+}

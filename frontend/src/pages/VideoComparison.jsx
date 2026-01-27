@@ -1,10 +1,12 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Camera as IconCamera, Play as IconPlay, Square as IconStop, Upload as IconUpload, Volume2 as IconVolumeOn, VolumeX as IconVolumeOff } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Camera as IconCamera, Play as IconPlay, Square as IconStop, Upload as IconUpload, Volume2 as IconVolumeOn, VolumeX as IconVolumeOff, Lock, Zap, TrendingUp, Target } from "lucide-react";
 import * as poseDetection from "@tensorflow-models/pose-detection";
 import * as tf from "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-backend-webgl";
+import { useAuth } from "../contexts/AuthContext";
 
 const MIN_KEYPOINT_SCORE = 0.3;
 const ANGLE_DIFF_THRESHOLD = 15;
@@ -184,6 +186,90 @@ function generateFeedback(userAngles, refAngles) {
 }
 
 const VideoComparison = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const userLevel = user?.level || 1;
+  const REQUIRED_LEVEL = 2;
+
+  // Check if user has required level
+  if (userLevel < REQUIRED_LEVEL) {
+    const xpNeeded = REQUIRED_LEVEL * 200 - (user?.xp || 0);
+    const uploadsNeeded = Math.ceil(xpNeeded / 10); // Minimum XP per upload
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl p-8 shadow-xl border border-white/20 dark:border-gray-700/20 text-center"
+        >
+          <motion.div
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="mb-6 flex justify-center"
+          >
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <Lock className="w-10 h-10 text-white" />
+            </div>
+          </motion.div>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Video Comparison Locked
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            This feature is available at Level {REQUIRED_LEVEL}. You're currently at Level {userLevel}.
+          </p>
+
+          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-4 text-white mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm opacity-90">Current Level</span>
+              <Zap className="w-5 h-5" />
+            </div>
+            <div className="text-3xl font-bold mb-2">Level {userLevel}</div>
+            <div className="text-sm opacity-90">
+              {user?.xp || 0} XP / {REQUIRED_LEVEL * 200} XP needed
+            </div>
+            <div className="mt-3 w-full bg-white/20 rounded-full h-2">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${((user?.xp || 0) / (REQUIRED_LEVEL * 200)) * 100}%` }}
+                transition={{ duration: 1 }}
+                className="bg-white rounded-full h-2"
+              />
+            </div>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <div className="text-left">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                  How to Level Up:
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Upload videos of exercises in Skill Lab to earn XP. Each upload gives you 10-50 XP based on your performance!
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                  You need approximately {uploadsNeeded} more upload{uploadsNeeded !== 1 ? 's' : ''} to reach Level {REQUIRED_LEVEL}.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate("/skill-lab")}
+            className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-lg transition-colors duration-200"
+          >
+            Go to Skill Lab
+          </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
+
   const [refVideoUrl, setRefVideoUrl] = useState(null);
   const [refImageUrl, setRefImageUrl] = useState(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
@@ -240,6 +326,46 @@ const VideoComparison = () => {
   const stillTicksRef = useRef(0);
 
   const canAnalyze = useMemo(() => Boolean(isCameraOn && (refVideoUrl || refImageUrl)), [isCameraOn, refVideoUrl, refImageUrl]);
+
+  const [refType, setRefType] = useState("image"); // "image" or "video"
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [canAdjustSpeed, setCanAdjustSpeed] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.referenceImage || location.state?.reference) {
+      const source = location.state.reference || location.state.referenceImage;
+      console.log("[Ref] Auto-loading from state:", source);
+      
+      // Determine type
+      const isVideo = location.state.type === "video" || source.endsWith(".mp4");
+      const type = isVideo ? "video" : "image";
+      setRefType(type);
+
+      if (type === "video") {
+        setRefVideoUrl(source);
+        setRefImageUrl(null);
+        
+        // Settings
+        const initialSpeed = location.state.defaultSpeed || 1.0;
+        setPlaybackSpeed(initialSpeed);
+        setCanAdjustSpeed(location.state.userAdjustableSpeed || false);
+        
+        // Force playback rate on metadata load
+        setTimeout(() => {
+             if (refVideoRef.current) {
+                refVideoRef.current.defaultPlaybackRate = initialSpeed;
+                refVideoRef.current.playbackRate = initialSpeed;
+             }
+        }, 100);
+
+      } else {
+        setRefImageUrl(source);
+        setRefVideoUrl(null);
+      }
+      
+      setFeedback(`Loaded ${location.state.poseName || "reference pose"}. Start camera, then Start Analysis.`);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -984,201 +1110,382 @@ const VideoComparison = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-gray-900">
-      <div className="max-w-7xl mx-auto p-4 md:p-6">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Form Comparison</h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Upload a reference video/photo and mirror your movement with live feedback.</p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-6"
+        >
+          <div className="text-center space-y-2">
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              Form Comparison
+            </h1>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Upload a reference video/photo and mirror your movement with real-time AI feedback
+            </p>
           </div>
-          <div className="flex-1" />
-          <div className="flex flex-wrap gap-2 items-center">
-            <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700 shadow-sm cursor-pointer">
-              <IconUpload className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-              <span className="text-sm text-gray-800 dark:text-gray-200">Upload reference</span>
-              <input type="file" accept="video/*,image/*" onChange={handleUpload} className="hidden" />
-            </label>
-            {!isCameraOn ? (
-              <div className="flex gap-2">
-                <button 
-                  onClick={startCamera} 
-                  className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm inline-flex items-center gap-2 transition-colors duration-200"
-                >
-                  <IconCamera className="w-4 h-4" /> Start Camera
-                </button>
-                {feedback.includes("Unable to access camera") && (
-                  <button 
-                    onClick={startCamera} 
-                    className="px-2 py-2 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white shadow-sm inline-flex items-center gap-2 transition-colors duration-200"
-                    title="Retry camera startup"
-                  >
-                    <IconCamera className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <button 
-                onClick={stopCamera} 
-                className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-100 inline-flex items-center gap-2 transition-colors duration-200"
-              >
-                <IconCamera className="w-4 h-4" /> Stop Camera
-              </button>
-            )}
-            {!isAnalyzing ? (
-              <button onClick={startAnalysis} disabled={!canAnalyze || isCountdown || !debugInfo.detectorReady} className={`px-3 py-2 rounded-lg inline-flex items-center gap-2 ${!canAnalyze || isCountdown || !debugInfo.detectorReady ? "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-500" : "bg-green-600 text-white shadow-sm"}`}>
-                <IconPlay className="w-4 h-4" /> Start Analysis
-              </button>
-            ) : (
-              <button onClick={stopAnalysis} className="px-3 py-2 rounded-lg bg-red-600 text-white shadow-sm inline-flex items-center gap-2"><IconStop className="w-4 h-4" /> Stop Analysis</button>
-            )}
-            {isCountdown && (
-              <span className="px-2 py-1 rounded-lg bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 font-medium">{countdownValue}</span>
-            )}
 
-            <button onClick={handleToggleVoice} className={`px-3 py-2 rounded-lg border text-sm inline-flex items-center gap-2 ${voiceOn ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300" : "bg-white dark:bg-gray-800 dark:border-gray-700 text-gray-800 dark:text-gray-200"}`}>
-              {voiceOn ? <IconVolumeOn className="w-4 h-4" /> : <IconVolumeOff className="w-4 h-4" />} {voiceOn ? "Voice on" : "Voice off"}
-            </button>
-          </div>
+          {/* Controls */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl p-6 shadow-xl border border-white/20 dark:border-gray-700/20"
+          >
+            <div className="flex flex-col lg:flex-row gap-4 items-center">
+              <label className="inline-flex items-center gap-2 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200">
+                <IconUpload className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">Upload Reference</span>
+                <input type="file" accept="video/*,image/*" onChange={handleUpload} className="hidden" />
+              </label>
+              
+              <div className="flex flex-wrap gap-3 items-center">
+                {!isCameraOn ? (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={startCamera}
+                    className="px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/50 inline-flex items-center gap-2 transition-all duration-200 font-medium"
+                  >
+                    <IconCamera className="w-5 h-5" /> Start Camera
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={stopCamera}
+                    className="px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 inline-flex items-center gap-2 transition-all duration-200 font-medium border border-gray-200 dark:border-gray-700"
+                  >
+                    <IconCamera className="w-5 h-5" /> Stop Camera
+                  </motion.button>
+                )}
+                
+                {!isAnalyzing ? (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={startAnalysis}
+                    disabled={!canAnalyze || isCountdown || !debugInfo.detectorReady}
+                    className={`px-4 py-3 rounded-xl inline-flex items-center gap-2 font-medium transition-all duration-200 ${
+                      !canAnalyze || isCountdown || !debugInfo.detectorReady
+                        ? "bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed"
+                        : "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg shadow-green-500/50"
+                    }`}
+                  >
+                    <IconPlay className="w-5 h-5" /> Start Analysis
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={stopAnalysis}
+                    className="px-4 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/50 inline-flex items-center gap-2 font-medium transition-all duration-200"
+                  >
+                    <IconStop className="w-5 h-5" /> Stop Analysis
+                  </motion.button>
+                )}
+                
+                {isCountdown && (
+                  <motion.div
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-400 to-yellow-500 text-yellow-900 font-bold text-lg shadow-lg"
+                  >
+                    {countdownValue}
+                  </motion.div>
+                )}
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleToggleVoice}
+                  className={`px-4 py-3 rounded-xl border text-sm inline-flex items-center gap-2 font-medium transition-all duration-200 ${
+                    voiceOn
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300 shadow-sm"
+                      : "bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-800 dark:text-gray-200 border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  {voiceOn ? <IconVolumeOn className="w-5 h-5" /> : <IconVolumeOff className="w-5 h-5" />}
+                  <span>{voiceOn ? "Voice On" : "Voice Off"}</span>
+                </motion.button>
+              </div>
+            </div>
+            
+            {/* Feedback Message */}
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-blue-500" />
+                <span>{feedback}</span>
+              </p>
+            </div>
+          </motion.div>
         </motion.div>
 
-        <div className="grid grid-cols-12 gap-5">
-          {/* Reference panel */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="col-span-12 md:col-span-4">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border dark:border-gray-800 overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
-                <div className="font-medium text-gray-900 dark:text-gray-100">Reference</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">{refVideoUrl ? "Video" : refImageUrl ? "Photo" : "None"}</div>
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Reference Panel */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="lg:col-span-4"
+          >
+            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20">
+                <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Target className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  Reference
+                </div>
+                <div className="text-xs px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+                  {refVideoUrl ? "Video" : refImageUrl ? "Photo" : "None"}
+                </div>
               </div>
-              <div className="aspect-video bg-black">
+              <div className="aspect-video bg-black relative">
                 {refVideoUrl ? (
                   <video ref={refVideoRef} src={refVideoUrl} playsInline muted loop className="w-full h-full object-cover" />
                 ) : refImageUrl ? (
                   <img ref={refImageRef} src={refImageUrl} alt="reference" className="w-full h-full object-contain bg-black" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">Upload a video or photo</div>
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-600">
+                    <IconUpload className="w-12 h-12 mb-2 opacity-50" />
+                    <p className="text-sm">Upload a video or photo</p>
+                  </div>
                 )}
               </div>
               {(refVideoUrl || refImageUrl) && (
-                <div className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 border-t dark:border-gray-800">Size: {debugInfo.refSize || "-"}</div>
+                <div className="px-6 py-3 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                  <span className="font-medium">Size:</span> {debugInfo.refSize || "-"}
+                </div>
               )}
             </div>
           </motion.div>
 
-          {/* Live + Analysis */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="col-span-12 md:col-span-8 flex flex-col gap-5">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border dark:border-gray-800 overflow-hidden relative">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
-                <div className="font-medium text-gray-900 dark:text-gray-100">Live Camera</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Size: {debugInfo.liveSize || "-"}</div>
+          {/* Live Camera + Analysis */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+            className="lg:col-span-8 flex flex-col gap-6"
+          >
+            {/* Live Camera */}
+            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden relative">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+                <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <IconCamera className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  Live Camera
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Size: {debugInfo.liveSize || "-"}
+                </div>
               </div>
-              <div className="aspect-video bg-black relative">
-                {/* Keep the video visible to confirm camera works; overlay draws on top */}
+              <div className="aspect-video bg-black relative rounded-b-2xl overflow-hidden">
                 <video ref={liveVideoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
                 <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
                 {isAnalyzing && (
-                  <div className="absolute top-3 right-3 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow">Analyzing</div>
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute top-4 right-4 bg-gradient-to-r from-green-600 to-green-700 text-white text-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-medium"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                    Analyzing
+                  </motion.div>
                 )}
                 {isCountdown && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-20 h-20 rounded-full bg-black/50 text-white flex items-center justify-center text-3xl font-bold">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                  >
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-yellow-900 flex items-center justify-center text-4xl font-bold shadow-2xl">
                       {countdownValue}
                     </div>
-                  </div>
+                  </motion.div>
                 )}
               </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border dark:border-gray-800 overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
-                <div className="font-medium text-gray-900 dark:text-gray-100">Real-time Analysis</div>
-                <div className="text-sm text-gray-600 dark:text-gray-300">Similarity: <span className="font-semibold">{similarity.toFixed(1)}%</span></div>
+            {/* Real-time Analysis */}
+            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    Real-time Analysis
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300">
+                    Similarity: <span className="font-bold text-lg">{similarity.toFixed(1)}%</span>
+                  </div>
+                </div>
               </div>
-              <div className="p-4">
-                <div className="mb-4">
-                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all`} style={{ width: `${similarity}%`, backgroundColor: similarity >= 75 ? "#16a34a" : similarity >= 50 ? "#f59e0b" : "#ef4444" }} />
+              <div className="p-6">
+                {/* Similarity Progress Bar */}
+                <div className="mb-6">
+                  <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${similarity}%` }}
+                      transition={{ duration: 0.5 }}
+                      className={`h-full rounded-full transition-all ${
+                        similarity >= 75
+                          ? "bg-gradient-to-r from-green-500 to-green-600"
+                          : similarity >= 50
+                          ? "bg-gradient-to-r from-yellow-500 to-yellow-600"
+                          : "bg-gradient-to-r from-red-500 to-red-600"
+                      }`}
+                    />
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-200">Guidance</div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Guidance */}
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                    <div className="text-sm font-semibold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-blue-500" />
+                      Guidance
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {tips.length ? (
                         tips.map((t, i) => (
-                          <span key={i} className="text-xs px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">{t}</span>
+                          <motion.span
+                            key={i}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="text-xs px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-medium"
+                          >
+                            {t}
+                          </motion.span>
                         ))
                       ) : (
-                        <span className="text-sm text-gray-600 dark:text-gray-300">{feedback}</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">{feedback}</span>
                       )}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-200">Top differences</div>
+
+                  {/* Top Differences */}
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                    <div className="text-sm font-semibold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                      <Target className="w-4 h-4 text-orange-500" />
+                      Top Differences
+                    </div>
                     {topDiffs.length ? (
                       <div className="flex flex-col gap-2">
                         {topDiffs.map((d) => (
-                          <div key={d.joint} className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                            <div className="text-sm font-medium capitalize text-gray-900 dark:text-gray-200">{d.joint.replace(/_/g, " ")}</div>
-                            <div className={`text-sm font-semibold ${d.diff >= 20 ? "text-red-600" : d.diff >= 10 ? "text-amber-600" : "text-green-600"}`}>{d.diff.toFixed(1)}°</div>
-                          </div>
+                          <motion.div
+                            key={d.joint}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center justify-between px-3 py-2 rounded-lg border bg-white dark:bg-gray-900 dark:border-gray-700"
+                          >
+                            <div className="text-sm font-medium capitalize text-gray-900 dark:text-gray-200">
+                              {d.joint.replace(/_/g, " ")}
+                            </div>
+                            <div
+                              className={`text-sm font-bold ${
+                                d.diff >= 20
+                                  ? "text-red-600 dark:text-red-400"
+                                  : d.diff >= 10
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-green-600 dark:text-green-400"
+                              }`}
+                            >
+                              {d.diff.toFixed(1)}°
+                            </div>
+                          </motion.div>
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-600 dark:text-gray-300">Move into frame to see differences.</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Move into frame to see differences.</div>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-4">
-                  <button onClick={() => setShowDetails((s) => !s)} className="text-sm px-3 py-2 rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 text-gray-800 dark:text-gray-200">
-                    {showDetails ? "Hide details" : "Show details"}
-                  </button>
+                {/* Details Toggle */}
+                <div className="mt-6">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowDetails((s) => !s)}
+                    className="text-sm px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 font-medium"
+                  >
+                    {showDetails ? "Hide Details" : "Show Details"}
+                  </motion.button>
                   {showDetails && (
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                        <div className="font-medium mb-2 text-sm text-gray-900 dark:text-gray-200">Your angles</div>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4"
+                    >
+                      <div className="p-4 border rounded-xl bg-gray-50 dark:bg-gray-800/50 dark:border-gray-700">
+                        <div className="font-semibold mb-3 text-sm text-gray-900 dark:text-white">Your Angles</div>
                         <AngleList angles={userAngles} />
                       </div>
-                      <div className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                        <div className="font-medium mb-2 text-sm text-gray-900 dark:text-gray-200">Reference angles</div>
+                      <div className="p-4 border rounded-xl bg-gray-50 dark:bg-gray-800/50 dark:border-gray-700">
+                        <div className="font-semibold mb-3 text-sm text-gray-900 dark:text-white">Reference Angles</div>
                         <AngleList angles={referenceAngles} />
                       </div>
-                      <div className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                        <div className="font-medium mb-2 text-sm text-gray-900 dark:text-gray-200">Differences</div>
+                      <div className="p-4 border rounded-xl bg-gray-50 dark:bg-gray-800/50 dark:border-gray-700">
+                        <div className="font-semibold mb-3 text-sm text-gray-900 dark:text-white">Differences</div>
                         <AngleList angles={angleDifferences} suffix="°" />
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               </div>
             </div>
-
-
           </motion.div>
         </div>
 
+        {/* Debug Panel */}
         {showDebug && (
-          <div className="mt-5 p-3 border rounded-lg text-xs font-mono bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm">
-            <div className="font-semibold mb-2">Debug</div>
-            <div className="grid grid-cols-2 md-grid-cols-4 md:grid-cols-4 gap-2">
-              <div>backend: {debugInfo.backend || "(loading)"}</div>
-              <div>detector: {debugInfo.detectorReady ? "ready" : "loading"}</div>
-              <div>camera: {debugInfo.cameraOn ? "on" : "off"}</div>
-              <div>live: {debugInfo.liveSize}</div>
-              <div>ref: {debugInfo.refSize}</div>
-              <div>kp live/ref: {debugInfo.liveKP}/{debugInfo.refKP}</div>
-              <div>angles live/ref: {debugInfo.liveAngles}/{debugInfo.refAngles}</div>
-              <div>similarity: {debugInfo.similarity.toFixed(1)}%</div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-6 p-6 border rounded-2xl text-xs font-mono bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl dark:border-gray-700 shadow-xl"
+          >
+            <div className="font-semibold mb-4 text-gray-900 dark:text-white">Debug Information</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Backend:</span> {debugInfo.backend || "(loading)"}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Detector:</span> {debugInfo.detectorReady ? "ready" : "loading"}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Camera:</span> {debugInfo.cameraOn ? "on" : "off"}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Live:</span> {debugInfo.liveSize}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Ref:</span> {debugInfo.refSize}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">KP:</span> {debugInfo.liveKP}/{debugInfo.refKP}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Angles:</span> {debugInfo.liveAngles}/{debugInfo.refAngles}
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="text-gray-500 dark:text-gray-400">Similarity:</span> {debugInfo.similarity.toFixed(1)}%
+              </div>
             </div>
-            <div className="mt-2">top diffs:</div>
-            <ul className="list-disc ml-5">
-              {debugInfo.topDiffs.map((d) => (
-                <li key={d.joint}>{d.joint}: {d.diff.toFixed(1)}° (you {d.ua?.toFixed(1)}°, ref {d.ra?.toFixed(1)}°)</li>
-              ))}
-              {!debugInfo.topDiffs.length && <li>n/a</li>}
-            </ul>
-          </div>
+            <div className="mt-4">
+              <div className="font-semibold mb-2 text-gray-900 dark:text-white">Top Differences:</div>
+              <ul className="list-disc ml-5 space-y-1">
+                {debugInfo.topDiffs.map((d) => (
+                  <li key={d.joint} className="text-gray-700 dark:text-gray-300">
+                    {d.joint}: {d.diff.toFixed(1)}° (you {d.ua?.toFixed(1)}°, ref {d.ra?.toFixed(1)}°)
+                  </li>
+                ))}
+                {!debugInfo.topDiffs.length && <li className="text-gray-500 dark:text-gray-400">n/a</li>}
+              </ul>
+            </div>
+          </motion.div>
         )}
       </div>
     </div>
@@ -1187,11 +1494,14 @@ const VideoComparison = () => {
 
 function AngleList({ angles, suffix = "°" }) {
   const entries = Object.entries(angles || {});
-  if (!entries.length) return <div className="text-sm text-gray-500">No data</div>;
+  if (!entries.length) return <div className="text-sm text-gray-500 dark:text-gray-400">No data</div>;
   return (
-    <ul className="text-sm grid grid-cols-2 gap-x-4 gap-y-1">
+    <ul className="text-sm grid grid-cols-2 gap-x-4 gap-y-2">
       {entries.map(([k, v]) => (
-        <li key={k} className="flex justify-between"><span>{k.replace(/_/g, " ")}</span><span>{v.toFixed(1)}{suffix}</span></li>
+        <li key={k} className="flex justify-between items-center px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
+          <span className="text-gray-700 dark:text-gray-300 capitalize">{k.replace(/_/g, " ")}</span>
+          <span className="font-semibold text-gray-900 dark:text-white">{v.toFixed(1)}{suffix}</span>
+        </li>
       ))}
     </ul>
   );
