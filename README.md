@@ -1,7 +1,5 @@
 # SkillSync - AI-Powered Exercise Form Analysis 🏋️‍♂️
 
-![SkillSync Banner](https://via.placeholder.com/1200x400?text=SkillSync+AI+Coach)
-
 **SkillSync** is a cutting-edge platform that uses computer vision and AI to help users master exercise form. By analyzing video input in real-time, SkillSync provides instant feedback, comparing your movement against professional references to ensure safety and maximize effectiveness.
 
 ---
