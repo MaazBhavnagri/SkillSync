@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext"
 import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import Navbar from "./components/Navbar"
 import AuthPage from "./pages/AuthPage"
+import LandingPage from "./pages/LandingPage"
 import Dashboard from "./pages/Dashboard"
 import Upload from "./pages/Upload"
 import Results from "./pages/Results"
@@ -39,39 +40,60 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 transition-all duration-500">
+    <div className="min-h-screen bg-[#030712] text-white transition-all duration-500">
       <AnimatePresence mode="wait">
-        {!isAuthenticated ? (
-          <AuthPage key="auth" />
-        ) : (
-          <motion.div
-            key="app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex flex-col min-h-screen"
-          >
-            <Navbar />
-            <main className="flex-1 pt-16">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                {/* Skill Lab replaces the old Upload page route */}
-                <Route path="/pose-library" element={<PoseLibrary />} />
-                <Route path="/skill-lab" element={<SkillLab />} />
-                {/* Exercise detail view for a specific skill */}
-                <Route path="/skill-lab/:exerciseId" element={<ExerciseDetail />} />
+        <Routes>
+          {/* Public Routes */}
+          <Route 
+            path="/" 
+            element={!isAuthenticated ? <LandingPage /> : <Navigate to="/dashboard" replace />} 
+          />
+          <Route 
+            path="/login" 
+            element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
+          />
+          <Route 
+            path="/signup" 
+            element={!isAuthenticated ? <AuthPage /> : <Navigate to="/dashboard" replace />} 
+          />
 
-                <Route path="/results/:uploadId" element={<Results />} />
-                <Route path="/results" element={<Results />} />
-                <Route path="/history" element={<History />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/video-comparison" element={<VideoComparison />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </main>
-          </motion.div>
-        )}
+          {/* Private Routes (Protected) */}
+          <Route
+            path="/*"
+            element={
+              isAuthenticated ? (
+                <motion.div
+                  key="app"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="flex flex-col min-h-screen"
+                >
+                  <Navbar />
+                  <main className="flex-1 pt-16">
+                    <Routes>
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/pose-library" element={<PoseLibrary />} />
+                      <Route path="/skill-lab" element={<SkillLab />} />
+                      <Route path="/skill-lab/:exerciseId" element={<ExerciseDetail />} />
+                      <Route path="/results/:uploadId" element={<Results />} />
+                      <Route path="/results" element={<Results />} />
+                      <Route path="/history" element={<History />} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/live-comparison" element={<VideoComparison />} />
+                      <Route path="/video-comparison" element={<Navigate to="/live-comparison" replace />} />
+                      {/* Catch all private routes and redirect to dashboard */}
+                      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    </Routes>
+                  </main>
+                </motion.div>
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+        </Routes>
       </AnimatePresence>
     </div>
   )

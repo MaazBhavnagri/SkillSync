@@ -13,8 +13,53 @@ import joblib
 import logging
 from typing import Dict, Tuple
 import sys
+import time
+
 
 logger = logging.getLogger(__name__)
+
+# region agent log
+DEBUG_LOG_PATH = Path(__file__).parents[2] / '.cursor' / 'debug.log'
+
+
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict, run_id: str = "pre-fix") -> None:
+    """
+    Compact NDJSON logger for hybrid push-up debugging.
+    Writes to c:\\D\\skill\\.cursor\\debug.log for this session.
+    """
+    try:
+        payload = {
+            "id": f"log_{int(time.time() * 1000)}",
+            "timestamp": int(time.time() * 1000),
+            "location": location,
+            "message": message,
+            "data": data,
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+        }
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except Exception:
+        # Logging must never break evaluation
+        pass
+
+# endregion
+
+
+def _visibility_to_confidence_level(avg_visibility: float) -> str:
+    """
+    Map landmark visibility (0–1) to a coarse confidence label.
+    High: >= 0.8, Medium: 0.6–0.8, Low: < 0.6
+    """
+    try:
+        v = float(avg_visibility)
+    except Exception:
+        v = 0.0
+    if v >= 0.8:
+        return "High"
+    if v >= 0.6:
+        return "Medium"
+    return "Low"
 
 # Import from model-training (hybrid evaluator components)
 MODEL_TRAINING_PATH = Path(__file__).parent.parent.parent / 'model-training' / 'pushup'
@@ -163,10 +208,28 @@ class HybridPushupEvaluator:
         metadata = {
             'extracted_frames': extracted_count,
             'avg_visibility': float(avg_visibility),
-            'original_fps': original_fps
+            'original_fps': float(original_fps),
+            'total_frames': int(total_frames),
+            'frame_interval': int(frame_interval),
         }
         
         logger.info(f"  Extracted {extracted_count} frames, avg visibility: {avg_visibility:.3f}")
+
+        # Agent debug: frame extraction & visibility (Hypothesis C)
+        _agent_debug_log(
+            hypothesis_id="C",
+            location="hybrid_pushup_evaluator.py:extract_pose_from_video",
+            message="pose_extraction_summary",
+            data={
+                "video_name": Path(video_path).name,
+                "extracted_frames": extracted_count,
+                "total_frames": int(total_frames),
+                "original_fps": float(original_fps),
+                "target_fps": int(target_fps),
+                "frame_interval": int(frame_interval),
+                "avg_visibility": float(avg_visibility),
+            },
+        )
         
         return landmarks_array, metadata
     
@@ -303,21 +366,59 @@ class HybridPushupEvaluator:
         try:
             # 1. Extract pose
             landmarks, metadata = self.extract_pose_from_video(video_path)
+
+            avg_vis = float(metadata.get("avg_visibility", 0.0))
+            confidence_level = _visibility_to_confidence_level(avg_vis)
+
+            _agent_debug_log(
+                hypothesis_id="C",
+                location="hybrid_pushup_evaluator.py:evaluate",
+                message="landmarks_extracted",
+                data={
+                    "video_name": Path(video_path).name,
+                    "num_valid_frames": int(landmarks.shape[0]),
+                    "avg_visibility": avg_vis,
+                    "confidenceLevel": confidence_level,
+                },
+            )
             
-            # Check visibility
-            if metadata['avg_visibility'] < 0.3:
+            # Check visibility - low detection confidence fallback (min score 30 instead of 0)
+            if avg_vis < 0.3:
+                _agent_debug_log(
+                    hypothesis_id="C",
+                    location="hybrid_pushup_evaluator.py:evaluate",
+                    message="early_return_low_visibility",
+                    data={"avg_visibility": avg_vis, "forced_score": 30.0},
+                )
                 return {
                     'exercise': 'pushup',
                     'status': 'INVALID',
-                    'score': 0.0,
+                    'score': 30.0,
                     'confidence': 0.0,
-                    'feedback': 'Pose detection confidence too low. Please record in better lighting with clear visibility.',
+                    'confidenceLevel': confidence_level,
+                    'feedback': 'Pose detection confidence is low. We could not fully see your movement, but here is a conservative baseline score.',
                     'rule_breakdown': {},
                     'failures': ['Low visibility']
                 }
             
             # 2. Compute angles
             angles = self.compute_angles(landmarks)
+
+            # Debug min/max elbow angles before normalization (Hypotheses A/B)
+            left_elbow = angles[:, 0]
+            right_elbow = angles[:, 1]
+            _agent_debug_log(
+                hypothesis_id="A",
+                location="hybrid_pushup_evaluator.py:evaluate",
+                message="raw_elbow_angle_stats",
+                data={
+                    "min_left_elbow": float(np.min(left_elbow)),
+                    "max_left_elbow": float(np.max(left_elbow)),
+                    "min_right_elbow": float(np.min(right_elbow)),
+                    "max_right_elbow": float(np.max(right_elbow)),
+                    "num_frames": int(angles.shape[0]),
+                },
+            )
             
             # 3. Normalize to 40 frames
             sequence = self.normalize_sequence(angles, target_frames=40)
@@ -328,14 +429,40 @@ class HybridPushupEvaluator:
             
             if self.lstm is not None:
                 try:
+                    _agent_debug_log(
+                        hypothesis_id="B",
+                        location="hybrid_pushup_evaluator.py:evaluate",
+                        message="lstm_input_shape",
+                        data={"sequence_shape": list(sequence.shape)},
+                    )
                     lstm_valid, lstm_confidence = self.lstm.predict(sequence)
+
+                    _agent_debug_log(
+                        hypothesis_id="B",
+                        location="hybrid_pushup_evaluator.py:evaluate",
+                        message="lstm_prediction",
+                        data={
+                            "lstm_valid": bool(lstm_valid),
+                            "lstm_confidence": float(lstm_confidence),
+                        },
+                    )
                     
                     if not lstm_valid or lstm_confidence < 0.4:
+                        _agent_debug_log(
+                            hypothesis_id="B",
+                            location="hybrid_pushup_evaluator.py:evaluate",
+                            message="early_return_lstm_invalid",
+                            data={
+                                "lstm_valid": bool(lstm_valid),
+                                "lstm_confidence": float(lstm_confidence),
+                            },
+                        )
                         return {
                             'exercise': 'pushup',
                             'status': 'INVALID',
                             'score': 0.0,
                             'confidence': float(lstm_confidence),
+                            'confidenceLevel': confidence_level,
                             'feedback': 'Temporal motion pattern invalid - possible reversed or incomplete push-up. Please perform a complete, controlled repetition.',
                             'rule_breakdown': {},
                             'failures': ['Invalid temporal pattern detected']
@@ -347,13 +474,48 @@ class HybridPushupEvaluator:
             # 5. Rule-based evaluation
             if self.rule_engine is not None:
                 rule_result = self.rule_engine.evaluate(sequence)
+
+                phases = rule_result.get('phases', {})
+                avg_elbow = phases.get('avg_elbow_angles', [])
+                if avg_elbow:
+                    avg_elbow_arr = np.array(avg_elbow, dtype=float)
+                    min_elbow = float(np.min(avg_elbow_arr))
+                    max_elbow = float(np.max(avg_elbow_arr))
+                else:
+                    min_elbow = max_elbow = None
+
+                _agent_debug_log(
+                    hypothesis_id="A",
+                    location="hybrid_pushup_evaluator.py:evaluate",
+                    message="rule_engine_result_summary",
+                    data={
+                        "valid_motion": bool(rule_result.get('valid_motion')),
+                        "total_penalty": float(rule_result.get('total_penalty', 0.0)),
+                        "num_failures": len(rule_result.get('failures', [])),
+                        "bottom_angle": float(phases.get('bottom_angle', 0.0)) if phases else None,
+                        "descent_frames": int(phases.get('descent_frames', 0)) if phases else 0,
+                        "ascent_frames": int(phases.get('ascent_frames', 0)) if phases else 0,
+                        "min_avg_elbow": min_elbow,
+                        "max_avg_elbow": max_elbow,
+                    },
+                )
                 
                 if not rule_result['valid_motion']:
+                    _agent_debug_log(
+                        hypothesis_id="D",
+                        location="hybrid_pushup_evaluator.py:evaluate",
+                        message="early_return_invalid_motion_structure",
+                        data={
+                            "total_penalty": float(rule_result.get('total_penalty', 0.0)),
+                            "failures": rule_result.get('failures', []),
+                        },
+                    )
                     return {
                         'exercise': 'pushup',
                         'status': 'INVALID',
                         'score': 0.0,
                         'confidence': float(lstm_confidence),
+                        'confidenceLevel': confidence_level,
                         'feedback': 'Push-up motion structure invalid. Ensure you perform complete descent and ascent.',
                         'rule_breakdown': rule_result.get('component_scores', {}),
                         'failures': rule_result.get('failures', [])
@@ -386,6 +548,18 @@ class HybridPushupEvaluator:
             
             # DEBUG: Log scoring calculation
             logger.info(f"[PENALTY SCORING] base=100, penalties={total_penalty:.1f}, lstm_penalty={30.0 if (not lstm_valid or lstm_confidence < 0.4) else 0.0}, final={final_score:.1f}")
+
+            _agent_debug_log(
+                hypothesis_id="D",
+                location="hybrid_pushup_evaluator.py:evaluate",
+                message="final_scoring",
+                data={
+                    "total_penalty": float(total_penalty),
+                    "lstm_valid": bool(lstm_valid),
+                    "lstm_confidence": float(lstm_confidence),
+                    "final_score": float(final_score),
+                },
+            )
             
             # 7. Determine status based on final score
             if final_score >= 80:
@@ -411,17 +585,27 @@ class HybridPushupEvaluator:
                 feedback = "\n".join(feedback_parts)
             
             # 9. Return formatted result
-            return {
+            result = {
                 'exercise': 'pushup',
                 'status': status,
                 'score': float(final_score),  # Already 0-100 range
                 'confidence': float(lstm_confidence),
+                'confidenceLevel': confidence_level,
                 'feedback': feedback,
                 'rule_breakdown': {k: float(v) for k, v in component_scores.items()},
                 'penalties': {k: float(v) for k, v in penalties.items()} if penalties else {},
                 'total_penalty': float(total_penalty) if 'total_penalty' in locals() else 0.0,
                 'failures': failures
             }
+
+            _agent_debug_log(
+                hypothesis_id="D",
+                location="hybrid_pushup_evaluator.py:evaluate",
+                message="final_result",
+                data={"status": status, "score": float(final_score)},
+            )
+
+            return result
             
         except ValueError as e:
             logger.error(f"Evaluation error: {e}")
@@ -430,6 +614,7 @@ class HybridPushupEvaluator:
                 'status': 'INVALID',
                 'score': 0.0,
                 'confidence': 0.0,
+                'confidenceLevel': 'Low',
                 'feedback': str(e),
                 'rule_breakdown': {},
                 'failures': [str(e)]
@@ -441,6 +626,7 @@ class HybridPushupEvaluator:
                 'status': 'INVALID',
                 'score': 0.0,
                 'confidence': 0.0,
+                'confidenceLevel': 'Low',
                 'feedback': 'An error occurred during analysis. Please try again.',
                 'rule_breakdown': {},
                 'failures': ['Processing error']

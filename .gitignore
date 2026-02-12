@@ -1,13 +1,191 @@
-# Python
-venv/
-flask-backend/venv/
-__pycache__/
-*.pyc
+# ==============================================================================
+# SkillSync - Gitignore
+# ==============================================================================
 
-# Node
-frontend/node_modules/
-frontend/dist/
+# ------------------------------------------------------------------------------
+# 1. Operating System Files
+# ------------------------------------------------------------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
 
-# IDE/system
-.env
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ------------------------------------------------------------------------------
+# 2. Editor & IDE Configuration
+# ------------------------------------------------------------------------------
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------------------
+# 3. Python & Virtual Environments
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Coverage
+.coverage
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ------------------------------------------------------------------------------
+# 4. Frontend (Node.js, React, Vite)
+# ------------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+frontend/dist/
+frontend/build/
+dist/
+build/
+
+# Vite
+.vite/
+frontend/.vite/
+
+# Local Environment Variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+frontend/.env.local
+
+# ------------------------------------------------------------------------------
+# 5. Backend (Flask & Database)
+# ------------------------------------------------------------------------------
+# Instance folder (database, sensitive configs)
+instance/
+flask-backend/instance/
+
+# Server-side sessions
+flask-backend/flask_session/
+
+# User uploaded content
+flask-backend/uploads/
+uploads/
+assets/videos/
+assets/images/
+
+# Logs
+*.log
+flask-backend/debug_log.txt
+logs/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# ------------------------------------------------------------------------------
+# 6. Machine Learning & Data
+# ------------------------------------------------------------------------------
+# Models & Weights (Large files)
+*.pkl
+*.h5
+*.keras
+*.pt
+*.pth
+*.tflite
+*.onnx
+*.pb
+*.weights
+*.m5
+
+# Training Artifacts
+model-training/checkpoints/
+model-training/logs/
+model-training/outputs/
+model-training/data/
+model-training/datasets/
+
+model-training/
+test_*.py
+BACKEND_FILES_DOCUMENTATION.md
+FILES_TO_DELETE_ANALYSIS.md
+
+# ------------------------------------------------------------------------------
+# 7. Temporary & Scratch Files
+# ------------------------------------------------------------------------------
+temp/
+tmp/
+*.bak
+*.tmp
+# Ignore specific scratchpad analysis files if desired (uncomment if needed)
+# FILES_TO_DELETE_ANALYSIS.md
+# BACKEND_FILES_DOCUMENTATION.md
+

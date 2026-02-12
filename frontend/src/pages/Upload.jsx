@@ -211,9 +211,9 @@ const Upload = () => {
           onDrop={handleDrop}
           className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 ${
             dragActive
-              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-              : "border-gray-300 dark:border-gray-600 bg-white/50 dark:bg-gray-900/50"
-          } backdrop-blur-xl`}
+              ? "border-blue-500 bg-blue-500/10"
+              : "border-white/10 bg-white/5 hover:bg-white/10"
+          } backdrop-blur-xl group cursor-pointer`}
         >
           <input
             ref={fileInputRef}
@@ -297,7 +297,7 @@ const Upload = () => {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.8, y: -20 }}
                   transition={{ delay: index * 0.1 }}
-                  className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-xl p-4 shadow-lg border border-white/20 dark:border-gray-700/20"
+                  className="glass rounded-xl p-4 shadow-lg hover:bg-white/10 transition-colors duration-200"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center space-x-2">
@@ -476,15 +476,15 @@ const Upload = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800"
+        className="glass bg-blue-900/20 border-blue-500/30 rounded-xl p-6"
       >
         <div className="flex items-start space-x-3">
           <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
           <div>
-            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+            <h4 className="font-semibold text-blue-100 mb-2">
               Tips for Better Analysis
             </h4>
-            <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+            <ul className="text-sm text-blue-200/80 space-y-1">
               <li>• Ensure good lighting and clear visibility</li>
               <li>• Keep the camera steady and at an appropriate distance</li>
               <li>• Perform the skill slowly and clearly</li>

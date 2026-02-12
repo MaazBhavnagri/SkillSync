@@ -1,12 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useLocation } from "react-router-dom"
 import { Eye, EyeOff, Mail, Lock, User, Zap, Sparkles } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
 const AuthPage = () => {
-  const [isLogin, setIsLogin] = useState(true)
+  const location = useLocation()
+  // Default to login, but if path is /signup, set to false
+  const [isLogin, setIsLogin] = useState(location.pathname !== "/signup")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
@@ -14,6 +17,10 @@ const AuthPage = () => {
     password: "",
     name: "",
   })
+
+  useEffect(() => {
+    setIsLogin(location.pathname !== "/signup")
+  }, [location.pathname])
 
   const { login, signup } = useAuth()
 

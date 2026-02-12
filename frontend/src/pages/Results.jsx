@@ -119,6 +119,9 @@ const Results = () => {
         <View style={styles.section}>
           <Text style={styles.subtitle}>Overall Score</Text>
           <Text style={styles.text}>{data.overallScore}%</Text>
+          {data.confidenceLevel && (
+            <Text style={styles.text}>Confidence: {data.confidenceLevel}</Text>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -444,6 +447,15 @@ const Results = () => {
                   : "Keep practicing!"}
               </p>
             </motion.div>
+
+            {analysisData.confidenceLevel && (
+              <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                Confidence:{" "}
+                <span className="font-medium text-gray-700 dark:text-gray-200">
+                  {analysisData.confidenceLevel}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Breakdown Scores */}

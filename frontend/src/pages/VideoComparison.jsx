@@ -185,7 +185,53 @@ function generateFeedback(userAngles, refAngles) {
   return top.length ? top : ["Great! Keep it up."];
 }
 
+// Map free-text feedback messages into structured live-session feedback events
+// for aggregation at the end of the session.
+function classifyFeedbackMessage(message) {
+  if (!message) return null;
+  const text = String(message).toLowerCase();
+
+  // Skip purely positive / neutral lines
+  if (text.includes("great") || text.includes("keep it up") || text.includes("waiting for movement")) {
+    return null;
+  }
+
+  let type = "overall_form";
+  let severity = "major";
+
+  if (text.includes("hip")) {
+    type = "hip_alignment";
+  } else if (text.includes("knee")) {
+    type = "knee_alignment";
+  } else if (text.includes("elbow")) {
+    type = "elbow_control";
+  } else if (text.includes("shoulder") || text.includes("arm")) {
+    type = "shoulder_control";
+  } else if (text.includes("torso") || text.includes("forward")) {
+    type = "torso_posture";
+  } else if (text.includes("lighting") || text.includes("frame")) {
+    type = "visibility";
+  }
+
+  // Simple severity heuristics
+  if (text.includes("slightly") || text.includes("a bit")) {
+    severity = "minor";
+  } else if (text.includes("avoid") || text.includes("incorrect") || text.includes("poor")) {
+    severity = "critical";
+  } else if (text.includes("more") || text.includes("less") || text.includes("keep")) {
+    severity = "major";
+  }
+
+  return {
+    type,
+    severity,
+    message,
+  };
+}
+
 const VideoComparison = () => {
+  const [activeTab, setActiveTab] = useState("camera"); // reference, camera, feedback
+  const [aspectRatio, setAspectRatio] = useState("video"); // video (16:9), square (1:1), tall (9:16)
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -306,6 +352,7 @@ const VideoComparison = () => {
   const rafRef = useRef(null);
   const renderRafRef = useRef(null);
   const lastRunRef = useRef(0);
+  const lastUiUpdateRef = useRef(0);
   const streamRef = useRef(null);
   const analyzingRef = useRef(false);
 
@@ -325,7 +372,30 @@ const VideoComparison = () => {
   const prevAnglesRef = useRef({});
   const stillTicksRef = useRef(0);
 
-  const canAnalyze = useMemo(() => Boolean(isCameraOn && (refVideoUrl || refImageUrl)), [isCameraOn, refVideoUrl, refImageUrl]);
+  // Session-level aggregates for post-live summary
+  const sessionStatsRef = useRef({
+    frameCount: 0,
+    similaritySum: 0,
+    stableFrames: 0,
+  });
+  const trackingStatsRef = useRef({
+    evaluatedFrames: 0,
+    validFrames: 0,
+    invalidFrames: 0,
+    visibilitySum: 0,
+  });
+  const poseDetectedOnceRef = useRef(false);
+  const warmupFramesSeenRef = useRef(0);
+  const sessionFeedbackRef = useRef([]);
+  const sessionStartRef = useRef(null);
+
+  const [sessionSummary, setSessionSummary] = useState(null);
+  const [savedSessionId, setSavedSessionId] = useState(null);
+  const [savingSession, setSavingSession] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [sessionError, setSessionError] = useState(null);
+
+  const canAnalyze = useMemo(() => Boolean(isCameraOn), [isCameraOn]);
 
   const [refType, setRefType] = useState("image"); // "image" or "video"
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -675,12 +745,14 @@ const VideoComparison = () => {
 
   const analyzeOnce = async () => {
     const detector = detectorRef.current;
-    if (!detector || !liveVideoRef.current || (!refVideoRef.current && !refImageRef.current)) {
+    if (!detector || !liveVideoRef.current) {
       console.log("[Analyze] Skipped: detector or media not ready");
       return;
     }
 
     const usingVideo = Boolean(refVideoUrl && refVideoRef.current);
+    const hasReference = Boolean(usingVideo || (refImageUrl && refImageRef.current));
+
     if (usingVideo && refVideoRef.current.readyState < 2) {
       console.log("[Analyze] Ref video not ready (readyState:", refVideoRef.current.readyState, ")");
       try { await refVideoRef.current.play(); } catch {}
@@ -690,11 +762,17 @@ const VideoComparison = () => {
     let livePoses = [];
     let refPoses = [];
     try {
-      const refSource = usingVideo ? refVideoRef.current : refImageRef.current;
-      [livePoses, refPoses] = await Promise.all([
-        detector.estimatePoses(liveVideoRef.current, { flipHorizontal: true }),
-        detector.estimatePoses(refSource, { flipHorizontal: true }),
-      ]);
+      if (!hasReference) {
+         [livePoses] = await Promise.all([
+           detector.estimatePoses(liveVideoRef.current, { flipHorizontal: true }),
+         ]);
+      } else {
+        const refSource = usingVideo ? refVideoRef.current : refImageRef.current;
+        [livePoses, refPoses] = await Promise.all([
+          detector.estimatePoses(liveVideoRef.current, { flipHorizontal: true }),
+          detector.estimatePoses(refSource, { flipHorizontal: true }),
+        ]);
+      }
     } catch (err) {
       console.warn("[Analyze] estimatePoses error:", err?.message);
       return;
@@ -702,10 +780,78 @@ const VideoComparison = () => {
 
     const livePose = livePoses?.[0];
     const refPose = refPoses?.[0];
-    if (!livePose || !refPose) {
-      console.log("[Analyze] Missing pose:", { livePose: !!livePose, refPose: !!refPose });
-      return;
+
+    // Valid frame: pose exists AND >= 60% of key joints have visibility >= 0.4
+    const rawKp = livePose && livePose.keypoints;
+    const keypoints = Array.isArray(rawKp) ? rawKp : [];
+    const totalKeyJoints = keypoints.length;
+    const visibleJointCount =
+      totalKeyJoints > 0
+        ? keypoints.filter((k) => {
+            if (!k || typeof k !== "object") return false;
+            const v = k.score ?? k.confidence ?? 0;
+            return Number(v) >= 0.4;
+          }).length
+        : 0;
+    const isFrameValid =
+      totalKeyJoints > 0 && totalKeyJoints >= 1 && visibleJointCount / totalKeyJoints >= 0.6;
+
+    if (livePose) {
+      if (isFrameValid) poseDetectedOnceRef.current = true;
+      warmupFramesSeenRef.current += 1;
     }
+
+    const elapsed = sessionStartRef.current ? Date.now() - sessionStartRef.current : 0;
+    const inWarmup =
+      elapsed < 2000 && warmupFramesSeenRef.current < 20;
+    const readyToCount = !inWarmup && poseDetectedOnceRef.current;
+
+    if (readyToCount) {
+      const tracking = trackingStatsRef.current;
+      tracking.evaluatedFrames += 1;
+      if (!livePose) {
+        tracking.invalidFrames += 1;
+        return;
+      }
+      if (!isFrameValid) {
+        tracking.invalidFrames += 1;
+        return;
+      }
+      tracking.validFrames += 1;
+      tracking.visibilitySum += visibleJointCount / totalKeyJoints;
+    }
+
+    if (!livePose) return;
+    
+    // If no reference, just give visibility advice or generic feedback
+    if (!hasReference) {
+        const visAdvice = generateVisibilityAdvice(livePose);
+        const messages = visAdvice.length ? visAdvice : ["Great form! Keep moving."];
+        latestTipsRef.current = messages;
+        setTips(messages);
+        
+        // Mock similarity for free mode
+        const similarityNow = 100;
+        
+        // Update stats
+        const stats = sessionStatsRef.current;
+        stats.frameCount += 1;
+        stats.similaritySum += similarityNow;
+        if (similarityNow >= 70) stats.stableFrames += 1;
+        
+        // Debug and render updates logic (shortened for free mode)
+         const now = performance.now();
+        if (now - lastUiUpdateRef.current >= 250) {
+            lastUiUpdateRef.current = now;
+            setUserAngles(computeAllAngles(livePose));
+            setReferenceAngles({});
+            setAngleDifferences({});
+            setDebugInfo((d) => ({ ...d, liveKP: (livePose.keypoints || []).filter((k) => (k.score ?? k.confidence ?? 0) >= MIN_KEYPOINT_SCORE).length, similarity: 100 }));
+        }
+        return;
+    }
+
+    if (!refPose) return;
 
     const liveAngles = computeAllAngles(livePose);
     const refAngles = computeAllAngles(refPose);
@@ -718,11 +864,17 @@ const VideoComparison = () => {
       messages = generateFeedback(liveAngles, refAngles);
     }
 
-    setUserAngles(liveAngles);
-    setReferenceAngles(refAngles);
-    setAngleDifferences(diffs);
-    setTips(messages);
+    // Always keep latest tips in ref for HUD / TTS
     latestTipsRef.current = messages;
+
+    // Record structured feedback for this frame for post-session aggregation
+    if (messages.length) {
+      const primary = messages[0];
+      const event = classifyFeedbackMessage(primary);
+      if (event) {
+        sessionFeedbackRef.current.push(event);
+      }
+    }
 
     const liveKP = (livePose.keypoints || []).filter((k) => (k.score ?? k.confidence ?? 0) >= MIN_KEYPOINT_SCORE).length;
     const refKP = (refPose.keypoints || []).filter((k) => (k.score ?? k.confidence ?? 0) >= MIN_KEYPOINT_SCORE).length;
@@ -733,15 +885,33 @@ const VideoComparison = () => {
     const values = Object.values(diffs);
     const avgDiff = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
     const similarityNow = Math.max(0, Math.min(100, 100 - (avgDiff / 45) * 100));
-    setDebugInfo((d) => ({
-      ...d,
-      liveKP,
-      refKP,
-      liveAngles: Object.keys(liveAngles).length,
-      refAngles: Object.keys(refAngles).length,
-      topDiffs,
-      similarity: similarityNow,
-    }));
+
+    // Update session aggregates for summary (no React state writes)
+    const stats = sessionStatsRef.current;
+    stats.frameCount += 1;
+    stats.similaritySum += similarityNow;
+    if (similarityNow >= 70) stats.stableFrames += 1;
+
+    // Throttle React state updates to avoid per-frame re-renders (max ~4 Hz)
+    const now = performance.now();
+    const UI_UPDATE_INTERVAL_MS = 250;
+    if (now - lastUiUpdateRef.current >= UI_UPDATE_INTERVAL_MS) {
+      lastUiUpdateRef.current = now;
+
+      setUserAngles(liveAngles);
+      setReferenceAngles(refAngles);
+      setAngleDifferences(diffs);
+      setTips(messages);
+      setDebugInfo((d) => ({
+        ...d,
+        liveKP,
+        refKP,
+        liveAngles: Object.keys(liveAngles).length,
+        refAngles: Object.keys(refAngles).length,
+        topDiffs,
+        similarity: similarityNow,
+      }));
+    }
     latestLivePoseRef.current = livePose;
     latestSimilarityRef.current = similarityNow;
     latestTopDiffsRef.current = topDiffs;
@@ -815,6 +985,26 @@ const VideoComparison = () => {
     }
     
     console.log("[Analyze] Start requested");
+
+    // Reset session stats, tracking quality, feedback, and any previous summary
+    sessionStatsRef.current = {
+      frameCount: 0,
+      similaritySum: 0,
+      stableFrames: 0,
+    };
+    trackingStatsRef.current = {
+      evaluatedFrames: 0,
+      validFrames: 0,
+      invalidFrames: 0,
+      visibilitySum: 0,
+    };
+    poseDetectedOnceRef.current = false;
+    warmupFramesSeenRef.current = 0;
+    sessionFeedbackRef.current = [];
+    sessionStartRef.current = Date.now();
+    setSessionSummary(null);
+    setSavedSessionId(null);
+    setSessionError(null);
     
     // Sync reference video to start for consistent comparison
     try {
@@ -901,6 +1091,185 @@ const VideoComparison = () => {
     if (isCountdown) {
       setIsCountdown(false);
       setCountdownValue(10);
+    }
+
+    // Build post-session summary
+    const buildSessionSummary = () => {
+      const tracking = trackingStatsRef.current;
+      if (!tracking || typeof tracking !== "object") return null;
+
+      const evaluatedFrames = Number(tracking.evaluatedFrames) || 0;
+      const validFrames = Number(tracking.validFrames) || 0;
+      const visibilitySum = Number(tracking.visibilitySum) || 0;
+
+      const durationMs = sessionStartRef.current ? Date.now() - sessionStartRef.current : 0;
+      const sessionRanLongEnough = durationMs >= 3000;
+
+      if (evaluatedFrames < 5) {
+        if (sessionRanLongEnough) {
+          return {
+            sessionValid: false,
+            overallScore: null,
+            stability: null,
+            trackingQuality: "Low",
+            message:
+              "Pose tracking was insufficient during the session. Ensure your full body is visible with proper lighting and positioning.",
+            suggestion:
+              "Position the camera to clearly capture your entire body before starting.",
+          };
+        }
+        return null;
+      }
+
+      const validRatio = validFrames / evaluatedFrames;
+      // Tracking quality: soft thresholds
+      let trackingQuality = "Low";
+      if (validRatio >= 0.85) trackingQuality = "High";
+      else if (validRatio >= 0.6) trackingQuality = "Medium";
+
+      // ONLY invalidate when we have enough data AND ratio is clearly bad
+      const MIN_EVALUATED_FOR_INVALIDATION = 30;
+      const MIN_VALID_RATIO_TO_INVALIDATE = 0.4;
+      const shouldInvalidate =
+        evaluatedFrames >= MIN_EVALUATED_FOR_INVALIDATION &&
+        validRatio < MIN_VALID_RATIO_TO_INVALIDATE;
+
+      if (shouldInvalidate) {
+        return {
+          sessionValid: false,
+          overallScore: null,
+          stability: null,
+          trackingQuality: "Low",
+          message:
+            "Pose tracking was insufficient during the session. Ensure your full body is visible with proper lighting and positioning.",
+          suggestion:
+            "Position the camera to clearly capture your entire body before starting.",
+        };
+      }
+
+      // Performance summary only when tracking is not Low (or we didn't invalidate)
+      const stats = sessionStatsRef.current;
+      if (!stats || typeof stats !== "object") return null;
+
+      const frameCount = Number(stats.frameCount) || 0;
+      const similaritySum = Number(stats.similaritySum) || 0;
+      const stableFrames = Number(stats.stableFrames) || 0;
+      const avgSimilarity = frameCount > 0 ? similaritySum / frameCount : 0;
+      const stability = frameCount > 0 ? (stableFrames / frameCount) * 100 : 0;
+
+      // Aggregate feedback events by type with severity-weighted frequency
+      const rawEvents = sessionFeedbackRef.current;
+      const events = Array.isArray(rawEvents) ? rawEvents : [];
+      const byType = {};
+      const severityWeight = { minor: 1, major: 2, critical: 3 };
+
+      events.forEach((ev) => {
+        if (!ev || typeof ev !== "object") return;
+        const key = ev.type || "overall_form";
+        const sev = ev.severity || "major";
+        const w = severityWeight[sev] || 1;
+        if (!byType[key]) {
+          byType[key] = {
+            count: 0,
+            severityWeightSum: 0,
+            maxSeverityWeight: 0,
+            sampleMessage: ev.message,
+            sampleSeverity: sev,
+          };
+        }
+        byType[key].count += 1;
+        byType[key].severityWeightSum += w;
+        if (w > byType[key].maxSeverityWeight) {
+          byType[key].maxSeverityWeight = w;
+          byType[key].sampleSeverity = sev;
+        }
+      });
+
+      let mainIssueType = "overall_form";
+      let severityLevel = "minor";
+
+      if (Object.keys(byType).length && frameCount > 0) {
+        let bestType = null;
+        let bestScore = -1;
+        Object.entries(byType).forEach(([type, data]) => {
+          const freq = data.count / frameCount;
+          const avgWeight = data.count > 0 ? data.severityWeightSum / data.count : 0;
+          const importance = freq * avgWeight;
+          if (importance > bestScore) {
+            bestScore = importance;
+            bestType = type;
+          }
+        });
+        if (bestType) {
+          mainIssueType = bestType;
+          severityLevel = byType[bestType].sampleSeverity || "major";
+        }
+      }
+
+      const issueCopy = {
+        hip_alignment: {
+          mainProblem: "Hip alignment was inconsistent during the session.",
+          suggestion: "Focus on keeping hips level throughout the movement.",
+        },
+        knee_alignment: {
+          mainProblem: "Knee positioning varied noticeably compared to the reference.",
+          suggestion: "Keep your knees tracking in line with your toes.",
+        },
+        elbow_control: {
+          mainProblem: "Elbow control differed from the reference form.",
+          suggestion: "Control your elbow bend and extension to mirror the reference.",
+        },
+        shoulder_control: {
+          mainProblem: "Shoulder positioning did not consistently match the reference.",
+          suggestion: "Stabilize your shoulders and match the reference shoulder height.",
+        },
+        torso_posture: {
+          mainProblem: "Torso posture drifted away from the reference over the session.",
+          suggestion: "Maintain a stable, neutral torso throughout the movement.",
+        },
+        visibility: {
+          mainProblem: "Camera visibility issues affected tracking of your movement.",
+          suggestion: "Improve lighting and ensure your full body stays inside the frame.",
+        },
+        overall_form: {
+          mainProblem: "Form differences were fairly balanced across joints.",
+          suggestion: "Maintain smooth, controlled repetitions and continue matching the reference.",
+        },
+      };
+
+      const copy = issueCopy[mainIssueType] || issueCopy.overall_form;
+
+      const poseType = (location.state && (location.state.poseName || location.state.referenceName)) || "Custom pose";
+      const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+
+      const trackingWarning =
+        trackingQuality === "Medium"
+          ? "Tracking quality was moderate."
+          : undefined;
+
+      return {
+        sessionValid: true,
+        trackingQuality,
+        trackingWarning,
+        overallScore: Math.round(avgSimilarity),
+        mainIssueType,
+        mainProblem: copy.mainProblem,
+        severityLevel,
+        suggestion: copy.suggestion,
+        stability: Math.round(stability),
+        totalDuration: durationSeconds,
+        poseType,
+        sessionType: "live",
+        raw: {
+          frameCount,
+          avgSimilarity,
+        },
+      };
+    };
+
+    const summary = buildSessionSummary();
+    if (summary) {
+      setSessionSummary(summary);
     }
   };
 
@@ -1088,8 +1457,6 @@ const VideoComparison = () => {
     }
   };
 
-
-
   const handleToggleVoice = () => {
     const next = !voiceOn;
     setVoiceOn(next);
@@ -1109,6 +1476,103 @@ const VideoComparison = () => {
     }
   };
 
+  const saveLiveSession = async () => {
+    if (!sessionSummary || savedSessionId || savingSession) return;
+    if (sessionSummary.sessionValid !== true) return;
+    const score = sessionSummary.overallScore;
+    if (typeof score !== "number" || Number.isNaN(score)) return;
+    try {
+      setSavingSession(true);
+      setSessionError(null);
+
+      const API_BASE = (
+        import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api"
+      ).replace(/\/$/, "");
+
+      const payload = {
+        poseType: sessionSummary.poseType ?? "Custom pose",
+        sessionType: refType === "image" ? "photo" : "video",
+        durationSeconds: Math.max(1, Number(sessionSummary.totalDuration) || 1),
+        overallScore: score,
+        stability: typeof sessionSummary.stability === "number" ? sessionSummary.stability : 0,
+        mainIssueType: sessionSummary.mainIssueType ?? "overall_form",
+        severityLevel: sessionSummary.severityLevel ?? "minor",
+        suggestion: sessionSummary.suggestion ?? "",
+      };
+
+      const res = await fetch(`${API_BASE}/live-sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save live session");
+      }
+
+      const data = await res.json();
+      if (data && data.session && data.session.id) {
+        setSavedSessionId(data.session.id);
+      }
+    } catch (err) {
+      console.error("Save live session error:", err);
+      setSessionError(err.message || "Failed to save session.");
+    } finally {
+      setSavingSession(false);
+    }
+  };
+
+  const downloadSessionPdf = async () => {
+    if (!sessionSummary || downloadingPdf) return;
+    if (sessionSummary.sessionValid !== true) return;
+    try {
+      setDownloadingPdf(true);
+      setSessionError(null);
+
+      // Ensure we have a persisted session first
+      if (!savedSessionId) {
+        await saveLiveSession();
+      }
+      if (!savedSessionId) {
+        throw new Error("Session could not be saved. Cannot generate PDF.");
+      }
+
+      const API_BASE = (
+        import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api"
+      ).replace(/\/$/, "");
+
+      const res = await fetch(
+        `${API_BASE}/live-session/${savedSessionId}/generate-report`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to generate PDF report");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `live-session-${savedSessionId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download session PDF error:", err);
+      setSessionError(err.message || "Failed to download PDF report.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -1120,11 +1584,39 @@ const VideoComparison = () => {
         >
           <div className="text-center space-y-2">
             <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              Form Comparison
+              Live Comparison
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Upload a reference video/photo and mirror your movement with real-time AI feedback
+              Select a pose from the library or upload a reference to start comparing.
             </p>
+          </div>
+
+          {/* Mobile Tabs */}
+          <div className="lg:hidden flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+             <button
+               onClick={() => setActiveTab("reference")}
+               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                 activeTab === "reference" ? "bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"
+               }`}
+             >
+               Reference
+             </button>
+             <button
+               onClick={() => setActiveTab("camera")}
+               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                 activeTab === "camera" ? "bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"
+               }`}
+             >
+               Camera
+             </button>
+             <button
+               onClick={() => setActiveTab("feedback")}
+               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                 activeTab === "feedback" ? "bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400"
+               }`}
+             >
+               Feedback
+             </button>
           </div>
 
           {/* Controls */}
@@ -1230,29 +1722,77 @@ const VideoComparison = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:col-span-4"
+            className={`lg:col-span-4 self-start ${activeTab === "reference" ? "block" : "hidden lg:block"}`}
           >
-            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden">
+            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20">
                 <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Target className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   Reference
                 </div>
-                <div className="text-xs px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
-                  {refVideoUrl ? "Video" : refImageUrl ? "Photo" : "None"}
+                <div className="flex items-center gap-2">
+                  {/* Aspect Ratio Selector */}
+                  <div className="flex bg-white/50 dark:bg-gray-800/50 rounded-lg p-0.5 border border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setAspectRatio("video")}
+                      className={`px-2 py-1 text-xs rounded-md transition-all ${
+                        aspectRatio === "video" 
+                          ? "bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400 font-medium" 
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                      title="16:9 Landscape"
+                    >
+                      16:9
+                    </button>
+                    <button
+                      onClick={() => setAspectRatio("square")}
+                      className={`px-2 py-1 text-xs rounded-md transition-all ${
+                        aspectRatio === "square" 
+                          ? "bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400 font-medium" 
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                      title="1:1 Square"
+                    >
+                      1:1
+                    </button>
+                    <button
+                      onClick={() => setAspectRatio("tall")}
+                      className={`px-2 py-1 text-xs rounded-md transition-all ${
+                        aspectRatio === "tall" 
+                          ? "bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400 font-medium" 
+                          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                      title="9:16 Portrait"
+                    >
+                      9:16
+                    </button>
+                  </div>
+
+                  {(refVideoUrl || refImageUrl) && (
+                    <div className="text-xs px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+                      {refVideoUrl ? "Video" : "Photo"}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="aspect-video bg-black relative">
-                {refVideoUrl ? (
-                  <video ref={refVideoRef} src={refVideoUrl} playsInline muted loop className="w-full h-full object-cover" />
-                ) : refImageUrl ? (
-                  <img ref={refImageRef} src={refImageUrl} alt="reference" className="w-full h-full object-contain bg-black" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-600">
-                    <IconUpload className="w-12 h-12 mb-2 opacity-50" />
-                    <p className="text-sm">Upload a video or photo</p>
-                  </div>
-                )}
+              <div className="bg-black relative flex items-center justify-center overflow-hidden">
+                <div className={`relative transition-all duration-300 mx-auto ${
+                  aspectRatio === "video" ? "aspect-video w-full" : 
+                  aspectRatio === "square" ? "aspect-square w-full max-w-[50vh]" : 
+                  "aspect-[9/16] h-[60vh] max-w-full"
+                }`}>
+                  {refVideoUrl ? (
+                    <video ref={refVideoRef} src={refVideoUrl} playsInline muted loop className="w-full h-full object-contain bg-black" />
+                  ) : refImageUrl ? (
+                    <img ref={refImageRef} src={refImageUrl} alt="reference" className="w-full h-full object-contain bg-black" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-600 p-6 text-center border-2 border-dashed border-gray-700 rounded-xl">
+                      <IconUpload className="w-12 h-12 mb-3 opacity-50" />
+                      <p className="text-sm font-medium mb-1">No reference selected</p>
+                      <p className="text-xs opacity-70">Select a pose from library or upload one</p>
+                    </div>
+                  )}
+                </div>
               </div>
               {(refVideoUrl || refImageUrl) && (
                 <div className="px-6 py-3 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
@@ -1267,10 +1807,10 @@ const VideoComparison = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-8 flex flex-col gap-6"
+            className="flex flex-col gap-6 lg:col-span-8"
           >
             {/* Live Camera */}
-            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden relative">
+            <div className={`bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden relative ${activeTab === "camera" ? "block" : "hidden lg:block"}`}>
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
                 <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <IconCamera className="w-5 h-5 text-green-600 dark:text-green-400" />
@@ -1308,7 +1848,7 @@ const VideoComparison = () => {
             </div>
 
             {/* Real-time Analysis */}
-            <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden">
+            <div className={`bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20 overflow-hidden ${activeTab === "feedback" ? "block" : "hidden lg:block"}`}>
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1471,23 +2011,184 @@ const VideoComparison = () => {
                 <span className="text-gray-500 dark:text-gray-400">Angles:</span> {debugInfo.liveAngles}/{debugInfo.refAngles}
               </div>
               <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <span className="text-gray-500 dark:text-gray-400">Similarity:</span> {debugInfo.similarity.toFixed(1)}%
+                <span className="text-gray-500 dark:text-gray-400">Similarity:</span> {(Number(debugInfo.similarity) || 0).toFixed(1)}%
               </div>
             </div>
             <div className="mt-4">
               <div className="font-semibold mb-2 text-gray-900 dark:text-white">Top Differences:</div>
               <ul className="list-disc ml-5 space-y-1">
-                {debugInfo.topDiffs.map((d) => (
-                  <li key={d.joint} className="text-gray-700 dark:text-gray-300">
-                    {d.joint}: {d.diff.toFixed(1)}° (you {d.ua?.toFixed(1)}°, ref {d.ra?.toFixed(1)}°)
+                {(Array.isArray(debugInfo.topDiffs) ? debugInfo.topDiffs : []).map((d, i) => (
+                  <li key={d?.joint ?? `diff-${i}`} className="text-gray-700 dark:text-gray-300">
+                    {d?.joint ?? "—"}: {typeof d?.diff === "number" ? d.diff.toFixed(1) : "—"}° (you {typeof d?.ua === "number" ? d.ua.toFixed(1) : "—"}°, ref {typeof d?.ra === "number" ? d.ra.toFixed(1) : "—"}°)
                   </li>
                 ))}
-                {!debugInfo.topDiffs.length && <li className="text-gray-500 dark:text-gray-400">n/a</li>}
+                {!(Array.isArray(debugInfo.topDiffs) && debugInfo.topDiffs.length) && <li className="text-gray-500 dark:text-gray-400">n/a</li>}
               </ul>
             </div>
           </motion.div>
         )}
       </div>
+
+      {/* Post-session summary modal */}
+      {sessionSummary && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200 dark:border-gray-700">
+            {sessionSummary.sessionValid === false ? (
+              <>
+                <div className="mb-4 text-center">
+                  <h2 className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                    Tracking Issue Detected
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Pose detection was insufficient during this session.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 px-4 py-3 border border-amber-200 dark:border-amber-800">
+                    <p className="text-sm text-gray-900 dark:text-gray-100">
+                      {sessionSummary.message ?? "Pose tracking was insufficient during the session. Ensure your full body is visible with proper lighting and positioning."}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Tracking quality</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {sessionSummary.trackingQuality ?? "Low"}
+                    </span>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-900/30 px-4 py-3 border border-blue-100 dark:border-blue-800">
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide mb-1">
+                      Suggestion
+                    </p>
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      {sessionSummary.suggestion ?? "Position the camera to clearly capture your entire body before starting."}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSessionSummary(null)}
+                    className="px-4 py-2 rounded-xl text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-4 text-center">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Session Summary
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Quick snapshot of your last live comparison.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between rounded-xl bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      Overall accuracy
+                    </span>
+                    <span className="text-xl font-bold text-gray-900 dark:text-white">
+                      {typeof sessionSummary.overallScore === "number" && !Number.isNaN(sessionSummary.overallScore)
+                        ? sessionSummary.overallScore
+                        : "—"}%
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Tracking quality</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {sessionSummary.trackingQuality ?? "—"}
+                    </span>
+                  </div>
+
+                  {sessionSummary.trackingWarning && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 px-1">
+                      {String(sessionSummary.trackingWarning)}
+                    </p>
+                  )}
+
+                  <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                      Main issue detected
+                    </p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100">
+                      {sessionSummary.mainProblem ?? "—"}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Stability
+                      </p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">
+                        {typeof sessionSummary.stability === "number" && !Number.isNaN(sessionSummary.stability)
+                          ? sessionSummary.stability
+                          : "—"}% consistency
+                      </p>
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
+                      Based on frame-to-frame similarity during the session.
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-900/30 px-4 py-3 border border-blue-100 dark:border-blue-800">
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide mb-1">
+                      Key suggestion
+                    </p>
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      {sessionSummary.suggestion ?? "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={saveLiveSession}
+                    disabled={savingSession || !!savedSessionId}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                      savedSessionId
+                        ? "bg-green-600 text-white cursor-default"
+                        : "bg-gray-900 text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+                    }`}
+                  >
+                    {savedSessionId
+                      ? "Session Saved"
+                      : savingSession
+                        ? "Saving..."
+                        : "Save Session"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadSessionPdf}
+                    disabled={downloadingPdf}
+                    className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {downloadingPdf ? "Generating PDF..." : "Download PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionSummary(null)}
+                    className="px-4 py-2 rounded-xl bg-gray-200 text-gray-900 text-sm font-medium hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {sessionError && (
+                  <p className="mt-3 text-xs text-red-500">
+                    {sessionError}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

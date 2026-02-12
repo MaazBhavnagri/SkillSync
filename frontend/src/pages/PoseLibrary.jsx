@@ -24,10 +24,10 @@ const PoseCard = ({ pose, category, onClick }) => {
     <motion.div
       whileHover={{ y: -5, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
-      className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-100 dark:border-gray-700 cursor-pointer group"
+      className="glass rounded-2xl overflow-hidden shadow-lg hover:shadow-blue-500/20 transition-all duration-300 cursor-pointer group"
       onClick={onClick}
     >
-      <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-900">
+      <div className="relative aspect-square overflow-hidden bg-gray-900/50">
         {pose.type === 'video' ? (
           <video
             src={pose.image}
@@ -110,12 +110,11 @@ const PoseLibrary = () => {
     : [activeCategory]
 
   const handlePoseClick = (pose) => {
-    navigate("/video-comparison", {
+    navigate("/live-comparison", {
       state: {
         referenceImage: pose.image, // Keep for backward compat, but logic prefers reference or handles it
         reference: pose.reference || pose.image, // "reference" is new standard
         poseName: pose.name,
-        mode: "static",
         type: pose.type || "image",
         defaultSpeed: pose.defaultSpeed,
         userAdjustableSpeed: pose.userAdjustableSpeed
@@ -124,11 +123,11 @@ const PoseLibrary = () => {
   }
 
   const handleCustomUpload = () => {
-    navigate("/video-comparison", { state: { mode: "upload" } }) // No image state forces upload prompt
+    navigate("/live-comparison") // No image state forces upload prompt or empty state
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-[#030712] px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
@@ -142,15 +141,15 @@ const PoseLibrary = () => {
         </div>
 
         {/* Controls */}
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center glass p-4 rounded-2xl">
             {/* Categories */}
             <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto no-scrollbar">
                 <button
                     onClick={() => setActiveCategory("all")}
                     className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                         activeCategory === "all" 
-                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
-                            : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25" 
+                            : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
                     }`}
                 >
                     All Poses
@@ -161,8 +160,8 @@ const PoseLibrary = () => {
                      onClick={() => setActiveCategory(cat)}
                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap capitalize transition-all ${
                          activeCategory === cat
-                             ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
-                             : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                             ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25" 
+                             : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
                      }`}
                  >
                      {cat}

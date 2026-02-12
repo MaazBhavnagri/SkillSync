@@ -213,6 +213,7 @@ def get_latest_result():
         'videoUrl': latest_upload.file_path,
         'overallScore': score,
         'feedback': result_json.get('feedback', ''),
+        'confidenceLevel': result_json.get('confidenceLevel'),
         'breakdown': {
             'form': score,
             'timing': score,
@@ -264,6 +265,7 @@ def get_result(upload_id):
             'overallScore': score,
             'formScore': score,
             'status': result_json.get('form_status', 'NEEDS_IMPROVEMENT'),
+            'confidenceLevel': result_json.get('confidenceLevel'),
             'feedback': result_json.get('feedback', ''),
             'breakdown': {
                 'form': score,

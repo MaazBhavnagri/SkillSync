@@ -1,9 +1,17 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from flask_login import current_user
 from decorators import login_required_api
-from models import Upload, db
+from models import Upload, LiveSession, db
 import os
 import logging
+from io import BytesIO
+
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+except ImportError:
+    canvas = None
+    letter = None
 
 history_bp = Blueprint('history', __name__)
 logger = logging.getLogger(__name__)
@@ -77,3 +85,140 @@ def delete_upload(upload_id):
     except Exception as e:
         logger.error(f"Delete upload error: {str(e)}")
         return jsonify({'error': 'Failed to delete upload'}), 500
+
+
+@history_bp.route('/live-sessions', methods=['GET'])
+@login_required_api
+def get_live_sessions():
+    """Return all live sessions for the current user (no pagination for now)."""
+    try:
+        sessions = (
+            LiveSession.query
+            .filter_by(user_id=current_user.id)
+            .order_by(LiveSession.created_at.desc())
+            .all()
+        )
+        return jsonify({
+            'success': True,
+            'sessions': [s.to_dict() for s in sessions],
+        }), 200
+    except Exception as e:
+        logger.error(f"Live sessions fetch error: {str(e)}")
+        return jsonify({'error': 'Failed to fetch live sessions'}), 500
+
+
+@history_bp.route('/live-sessions', methods=['POST'])
+@login_required_api
+def create_live_session():
+    """Persist a live session summary created on the frontend."""
+    try:
+        data = request.get_json() or {}
+        pose_type = (data.get('poseType') or 'Unknown pose')[:100]
+        session_type = (data.get('sessionType') or 'video')[:50]  # 'photo' or 'video'
+        duration_seconds = int(data.get('durationSeconds') or data.get('duration_seconds') or 0)
+        overall_score = float(data.get('overallScore') or data.get('overall_score') or 0.0)
+        stability = float(data.get('stability') or 0.0)
+        main_issue_type = (data.get('mainIssueType') or data.get('main_issue_type') or None)
+        severity_level = (data.get('severityLevel') or data.get('severity_level') or None)
+        suggestion = data.get('suggestion') or ""
+
+        live_session = LiveSession(
+            user_id=current_user.id,
+            pose_type=pose_type,
+            session_type=session_type,
+            duration_seconds=max(0, duration_seconds),
+            overall_score=overall_score,
+            stability=stability,
+            main_issue_type=main_issue_type,
+            severity_level=severity_level,
+            suggestion=suggestion,
+        )
+        db.session.add(live_session)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'session': live_session.to_dict(),
+        }), 201
+    except Exception as e:
+        logger.error(f"Create live session error: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'error': 'Failed to save live session'}), 500
+
+
+@history_bp.route('/live-session/<int:session_id>/generate-report', methods=['POST'])
+@login_required_api
+def generate_live_session_report(session_id):
+    """Generate a PDF report for a single live session."""
+    if canvas is None or letter is None:
+        return jsonify({'error': 'PDF generation is not available on this server.'}), 500
+
+    session = LiveSession.query.filter_by(id=session_id, user_id=current_user.id).first()
+    if not session:
+        return jsonify({'error': 'Live session not found'}), 404
+
+    try:
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        y = height - 72
+
+        # Header
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(72, y, "SkillSync Live Session Report")
+        y -= 36
+
+        c.setFont("Helvetica", 12)
+        c.drawString(72, y, f"User: {current_user.name}")
+        y -= 18
+
+        c.drawString(72, y, f"Pose type: {session.pose_type}")
+        y -= 18
+
+        c.drawString(72, y, f"Session duration: {session.duration_seconds} seconds")
+        y -= 18
+
+        c.drawString(72, y, f"Overall score: {round(session.overall_score)}%")
+        y -= 18
+
+        c.drawString(72, y, f"Stability: {round(session.stability)}%")
+        y -= 18
+
+        if session.main_issue_type:
+            c.drawString(72, y, f"Main issue: {session.main_issue_type}")
+            y -= 18
+
+        if session.severity_level:
+            c.drawString(72, y, f"Severity level: {session.severity_level}")
+            y -= 18
+
+        if session.suggestion:
+            y -= 12
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(72, y, "Suggested correction:")
+            y -= 18
+            c.setFont("Helvetica", 12)
+            text = c.beginText(72, y)
+            text.textLines(session.suggestion)
+            c.drawText(text)
+            y = text.getY() - 12
+
+        created_str = session.created_at.strftime("%b %d, %Y %H:%M") if session.created_at else ""
+        c.setFont("Helvetica-Oblique", 10)
+        c.drawString(72, 72, f"Date: {created_str}")
+
+        c.showPage()
+        c.save()
+
+        buffer.seek(0)
+        filename = f"live-session-{session_id}.pdf"
+        return send_file(
+            buffer,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        logger.error(f"Live session PDF generation error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Failed to generate PDF report'}), 500

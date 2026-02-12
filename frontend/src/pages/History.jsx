@@ -18,6 +18,7 @@ import AccuracyGraph from "../components/AccuracyGraph";
 
 function History() {
   const [uploads, setUploads] = useState([]);
+  const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,6 +27,7 @@ function History() {
   const [perPage, setPerPage] = useState(10);
   const [exerciseType, setExerciseType] = useState("");
   const [sortBy, setSortBy] = useState("date");
+  const [historyFilter, setHistoryFilter] = useState("all"); // 'all' | 'uploads' | 'live'
   const navigate = useNavigate();
 
   // Fetch uploads from backend
@@ -59,6 +61,26 @@ function History() {
     }
     fetchUploads();
   }, [exerciseType, page, perPage, sortBy]);
+
+  // Fetch live sessions (separate from uploads)
+  useEffect(() => {
+    async function fetchLiveSessions() {
+      try {
+        const API_BASE = (
+          import.meta?.env?.VITE_API_BASE_URL || "http://localhost:5000/api"
+        ).replace(/\/$/, "");
+        const res = await fetch(`${API_BASE}/live-sessions`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to fetch live sessions");
+        const data = await res.json();
+        setLiveSessions(data.sessions || []);
+      } catch (err) {
+        console.error("Live sessions fetch error:", err);
+      }
+    }
+    fetchLiveSessions();
+  }, []);
 
   const exerciseTypes = [
     ...new Set(uploads.map((upload) => upload.exercise_type)),
@@ -155,6 +177,16 @@ function History() {
     )
   }
 
+  const filteredUploadsSection =
+    historyFilter === "live"
+      ? []
+      : sortedData;
+
+  const filteredLiveSessionsSection =
+    historyFilter === "uploads"
+      ? []
+      : liveSessions;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -243,19 +275,39 @@ function History() {
           transition={{ delay: 0.2 }}
           className="space-y-4"
         >
-          {/* Section Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Clock className="w-6 h-6 text-blue-500" />
-              Exercise History
-            </h2>
-            <span className="text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-              {sortedData.length} {sortedData.length === 1 ? 'item' : 'items'}
-            </span>
+          {/* Filter toggle for uploads vs live sessions */}
+          <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Clock className="w-6 h-6 text-blue-500" />
+                Exercise History
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              {[
+                { value: "all", label: "All" },
+                { value: "uploads", label: "Upload Analysis" },
+                { value: "live", label: "Live Sessions" },
+              ].map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setHistoryFilter(f.value)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    historyFilter === f.value
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Upload analyses */}
           <AnimatePresence>
-            {sortedData.map((upload, index) => (
+            {filteredUploadsSection.map((upload, index) => (
               <motion.div
                 key={upload.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -445,7 +497,7 @@ function History() {
             ))}
           </AnimatePresence>
 
-          {sortedData.length === 0 && (
+          {filteredUploadsSection.length === 0 && historyFilter !== "live" && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -455,12 +507,125 @@ function History() {
                 <Search className="w-16 h-16 mx-auto" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                No results found
+                No upload analyses found
               </h3>
               <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
                 Try adjusting your search or filter criteria to find what you're looking for
               </p>
             </motion.div>
+          )}
+
+          {/* Live sessions section */}
+          {filteredLiveSessionsSection.length > 0 && (
+            <div className="mt-10 space-y-4">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                Live Sessions
+              </h3>
+              <AnimatePresence>
+                {filteredLiveSessionsSection.map((session) => (
+                  <motion.div
+                    key={session.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-lg hover:shadow-xl border border-white/20 dark:border-gray-700/20 transition-all duration-300 overflow-hidden group"
+                  >
+                    <div className="p-6 flex flex-col md:flex-row items-start md:items-center gap-4">
+                      <div className="flex-1 min-w-0 w-full">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg text-xs font-semibold uppercase">
+                                Live Session
+                              </span>
+                              <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium">
+                                {session.pose_type}
+                              </span>
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 truncate">
+                              {session.pose_type} • {Math.round(session.overall_score)}%
+                            </h3>
+                            <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-4 h-4" />
+                                <span>{formatDate(session.created_at)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Clock className="w-4 h-4" />
+                                <span>{session.duration_seconds}s</span>
+                              </div>
+                            </div>
+                            {session.main_issue_type && (
+                              <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                                Main issue:{" "}
+                                <span className="font-medium">
+                                  {session.main_issue_type.replace(/_/g, " ")}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-center md:text-right">
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                                Score
+                              </div>
+                              <div
+                                className={`text-3xl font-bold ${getScoreColor(
+                                  session.overall_score
+                                )}`}
+                              >
+                                {Math.round(session.overall_score)}%
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                Stability {Math.round(session.stability)}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={async () => {
+                              try {
+                                const API_BASE = (
+                                  import.meta?.env?.VITE_API_BASE_URL ||
+                                  "http://localhost:5000/api"
+                                ).replace(/\/$/, "");
+                                const res = await fetch(
+                                  `${API_BASE}/live-session/${session.id}/generate-report`,
+                                  {
+                                    method: "POST",
+                                    credentials: "include",
+                                  }
+                                );
+                                if (!res.ok) {
+                                  return;
+                                }
+                                const blob = await res.blob();
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `live-session-${session.id}.pdf`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                              } catch (err) {
+                                console.error("Live session PDF download error:", err);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                          >
+                            Download PDF
+                          </motion.button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
           )}
         </motion.div>
       </div>

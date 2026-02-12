@@ -22,9 +22,9 @@ const Navbar = () => {
     // Skill Lab replaces the old Upload nav destination
     { path: "/skill-lab", icon: Upload, label: "Skill Lab" },
     { 
-      path: "/video-comparison", 
+      path: "/live-comparison", 
       icon: Video, 
-      label: "Video Comparison",
+      label: "Live Comparison",
       requiresLevel: REQUIRED_LEVEL_FOR_VIDEO_COMPARISON,
       locked: userLevel < REQUIRED_LEVEL_FOR_VIDEO_COMPARISON
     },
@@ -50,7 +50,7 @@ const Navbar = () => {
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className="fixed top-0 left-0 right-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-700"
+        className="fixed top-0 left-0 right-0 z-40 bg-[#030712]/80 backdrop-blur-lg border-b border-white/5"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -65,9 +65,11 @@ const Navbar = () => {
                 animate={{ rotate: [0, 360] }}
                 transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
               >
-                <Zap className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                <Zap className="w-8 h-8 text-blue-500" />
               </motion.div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">SkillSync</span>
+              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                SkillSync
+              </span>
             </motion.div>
 
             {/* Desktop Navigation */}
@@ -85,10 +87,10 @@ const Navbar = () => {
                     onClick={() => !isLocked && handleNavigation(item.path)}
                     className={`relative flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
                       isLocked
-                        ? "text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60"
+                        ? "text-gray-600 cursor-not-allowed opacity-60"
                         : isActive
-                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"
-                        : "text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        ? "text-blue-400 bg-blue-500/10"
+                        : "text-gray-400 hover:text-white hover:bg-white/5"
                     }`}
                     title={isLocked ? `Requires Level ${item.requiresLevel}` : item.label}
                   >
@@ -111,7 +113,7 @@ const Navbar = () => {
                     </motion.div>
                     <span className="font-medium">{item.label}</span>
                     {isLocked && (
-                      <span className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                      <span className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-gray-400">
                         L{item.requiresLevel}
                       </span>
                     )}
@@ -119,7 +121,7 @@ const Navbar = () => {
                     {isActive && !isLocked && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
                         initial={false}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
@@ -135,14 +137,14 @@ const Navbar = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200"
+                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-white/5 transition-colors duration-200"
               >
                 <img
                   src={user?.avatar_url ? `http://localhost:5000${user.avatar_url}` : "/placeholder-user.jpg"}
                   alt="User Avatar"
                   className="w-8 h-8 rounded-full object-cover border-2 border-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span className="text-sm font-medium text-gray-300">
                   {user?.name || "User"}
                 </span>
               </motion.button>
@@ -155,14 +157,14 @@ const Navbar = () => {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
                     transition={{ duration: 0.2 }}
-                    className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                    className="absolute right-0 mt-2 w-48 bg-[#0f172a] rounded-xl shadow-xl border border-white/10 overflow-hidden"
                   >
                     <div className="py-2">
                       <motion.button
                         whileHover={{ scale: 1.02, x: 4 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => handleNavigation("/settings")}
-                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200"
+                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-gray-300 hover:text-blue-400 hover:bg-white/5 transition-all duration-200"
                       >
                         <User className="w-4 h-4" />
                         <span className="text-sm font-medium">Profile</span>
@@ -171,7 +173,7 @@ const Navbar = () => {
                         whileHover={{ scale: 1.02, x: 4 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={handleLogout}
-                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200"
+                        className="w-full flex items-center space-x-3 px-4 py-3 text-left text-red-500 hover:bg-red-500/10 transition-all duration-200"
                       >
                         <LogOut className="w-4 h-4" />
                         <span className="text-sm font-medium">Sign Out</span>
@@ -187,7 +189,7 @@ const Navbar = () => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="md:hidden p-2 rounded-lg text-gray-300 hover:bg-white/10"
             >
               <AnimatePresence mode="wait">
                 {isMobileMenuOpen ? (

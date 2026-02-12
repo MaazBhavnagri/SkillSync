@@ -22,6 +22,7 @@ class User(UserMixin, db.Model):
     
     # Relationships
     uploads = db.relationship('Upload', backref='user', lazy=True, cascade='all, delete-orphan')
+    live_sessions = db.relationship('LiveSession', backref='user', lazy=True, cascade='all, delete-orphan')
     settings = db.relationship('Settings', backref='user', uselist=False, cascade='all, delete-orphan')
     
     def set_password(self, password):
@@ -100,6 +101,37 @@ class Upload(db.Model):
             'processing_completed_at': self.processing_completed_at.isoformat() if self.processing_completed_at else None,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
+        }
+
+
+class LiveSession(db.Model):
+    __tablename__ = 'live_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    pose_type = db.Column(db.String(100), nullable=False)
+    session_type = db.Column(db.String(50), nullable=False)  # 'photo' or 'video'
+    duration_seconds = db.Column(db.Integer, nullable=False)
+    overall_score = db.Column(db.Float, nullable=False, default=0.0)
+    stability = db.Column(db.Float, nullable=False, default=0.0)
+    main_issue_type = db.Column(db.String(100))
+    severity_level = db.Column(db.String(20))
+    suggestion = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'pose_type': self.pose_type,
+            'session_type': self.session_type,
+            'duration_seconds': self.duration_seconds,
+            'overall_score': float(self.overall_score or 0.0),
+            'stability': float(self.stability or 0.0),
+            'main_issue_type': self.main_issue_type,
+            'severity_level': self.severity_level,
+            'suggestion': self.suggestion,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 class Settings(db.Model):

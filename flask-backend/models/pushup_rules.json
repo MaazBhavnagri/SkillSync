@@ -1,0 +1,62 @@
+{
+    "exercise": "pushup",
+    "version": "1.0",
+    "description": "Biomechanical rules for push-up form evaluation",
+    "angle_features": [
+        "left_elbow_angle",
+        "right_elbow_angle",
+        "left_shoulder_angle",
+        "right_shoulder_angle",
+        "left_hip_angle",
+        "right_hip_angle",
+        "hip_angle",
+        "trunk_inclination",
+        "head_hip_alignment",
+        "elbow_symmetry"
+    ],
+    "rules": {
+        "elbow_min_bend": {
+            "value": 70,
+            "description": "Minimum elbow bend at bottom of push-up (degrees)",
+            "failure_message": "Insufficient elbow bend - go lower"
+        },
+        "elbow_max_extension": {
+            "value": 170,
+            "description": "Maximum elbow extension at top (degrees)",
+            "failure_message": "Incomplete extension at top"
+        },
+        "hip_sag_threshold": {
+            "value": 15,
+            "description": "Maximum deviation from straight body line (degrees)",
+            "failure_message": "Hip sag detected - keep body straight"
+        },
+        "symmetry_tolerance": {
+            "value": 20,
+            "description": "Maximum acceptable difference between left and right elbows (degrees)",
+            "failure_message": "Asymmetric form - left and right arms not balanced"
+        },
+        "trunk_alignment_max": {
+            "value": 30,
+            "description": "Maximum trunk deviation from plank position (degrees)",
+            "failure_message": "Poor trunk alignment"
+        },
+        "min_range_of_motion": {
+            "value": 60,
+            "description": "Minimum elbow ROM required (degrees)",
+            "failure_message": "Insufficient range of motion"
+        }
+    },
+    "phase_detection": {
+        "descent_threshold": 140,
+        "bottom_threshold": 90,
+        "ascent_threshold": 140,
+        "description": "Thresholds for detecting push-up phases based on average elbow angle"
+    },
+    "weights": {
+        "elbow_depth": 0.3,
+        "body_alignment": 0.25,
+        "symmetry": 0.2,
+        "full_extension": 0.15,
+        "range_of_motion": 0.1
+    }
+}

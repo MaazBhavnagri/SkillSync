@@ -146,9 +146,13 @@ const Dashboard = () => {
       {/* Welcome Section */}
       <motion.div
         variants={itemVariants}
-        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl p-8 shadow-xl border border-white/20 dark:border-gray-700/20"
+        className="glass rounded-3xl p-8 relative overflow-hidden"
       >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
+        {/* Ambient Background */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl -z-10" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl -z-10" />
+
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between relative z-10">
           <div className="flex items-center space-x-4 mb-6 md:mb-0">
             <motion.div whileHover={{ scale: 1.1, rotate: 5 }} className="relative">
               <img
@@ -229,9 +233,9 @@ const Dashboard = () => {
               variants={itemVariants}
               whileHover={{
                 scale: 1.05,
-                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                y: -5,
               }}
-              className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-xl p-6 shadow-lg border border-white/20 dark:border-gray-700/20 cursor-pointer"
+              className="glass hover:bg-white/10 transition-all duration-300 rounded-2xl p-6 cursor-pointer group"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -264,40 +268,42 @@ const Dashboard = () => {
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => navigate("/upload")}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-left"
+          className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white p-6 rounded-2xl shadow-lg hover:shadow-blue-500/25 transition-all duration-300 text-left relative overflow-hidden group"
         >
-          <Upload className="w-8 h-8 mb-4" />
-          <h3 className="text-xl font-bold mb-2">Upload Now</h3>
-          <p className="text-white/80">Upload a new skill video or image for AI analysis</p>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-150" />
+          <Upload className="w-8 h-8 mb-4 relative z-10" />
+          <h3 className="text-xl font-bold mb-2 relative z-10">Upload Now</h3>
+          <p className="text-blue-100/80 relative z-10">Upload a new skill video or image for AI analysis</p>
         </motion.button>
 
         <motion.button
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => navigate("/video-comparison")}
-          className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-left"
+          onClick={() => navigate("/live-comparison")}
+          className="bg-gradient-to-br from-emerald-600 via-green-600 to-teal-800 text-white p-6 rounded-2xl shadow-lg hover:shadow-green-500/25 transition-all duration-300 text-left relative overflow-hidden group"
         >
-          <Camera className="w-8 h-8 mb-4" />
-          <h3 className="text-xl font-bold mb-2">Live Comparison Analysis</h3>
-          <p className="text-white/80">Side-by-side live feedback with a reference</p>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-150" />
+          <Camera className="w-8 h-8 mb-4 relative z-10" />
+          <h3 className="text-xl font-bold mb-2 relative z-10">Live Analysis</h3>
+          <p className="text-green-100/80 relative z-10">Side-by-side live feedback with a reference</p>
         </motion.button>
 
         <motion.button
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => navigate("/history")}
-          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/20 p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-left"
+          className="glass hover:bg-white/10 p-6 rounded-2xl transition-all duration-300 text-left group"
         >
-          <History className="w-8 h-8 mb-4 text-gray-700 dark:text-gray-300" />
-          <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">View History</h3>
-          <p className="text-gray-600 dark:text-gray-400">Review your past uploads and progress</p>
+          <History className="w-8 h-8 mb-4 text-gray-400 group-hover:text-white transition-colors" />
+          <h3 className="text-xl font-bold mb-2 text-white">View History</h3>
+          <p className="text-gray-400 group-hover:text-gray-300 transition-colors">Review your past uploads and progress</p>
         </motion.button>
 
         <motion.button
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => navigate("/results")}
-          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/20 p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-left"
+          className="glass hover:bg-white/10 p-6 rounded-2xl transition-all duration-300 text-left group"
         >
           <BarChart3 className="w-8 h-8 mb-4 text-gray-700 dark:text-gray-300" />
           <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white">Latest Results</h3>
@@ -308,7 +314,7 @@ const Dashboard = () => {
       {/* Recent Uploads */}
       <motion.div
         variants={itemVariants}
-        className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl p-8 shadow-xl border border-white/20 dark:border-gray-700/20"
+        className="glass rounded-3xl p-8"
       >
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Recent Uploads</h2>
@@ -331,7 +337,7 @@ const Dashboard = () => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 + 0.8 }}
                 whileHover={{ scale: 1.02, x: 10 }}
-                className="flex items-center space-x-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 cursor-pointer"
+                className="flex items-center space-x-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-all duration-200 cursor-pointer border border-white/5 hover:border-white/10"
                 onClick={() => navigate(`/results/${upload.id}`)}
               >
                 <div className="relative">
